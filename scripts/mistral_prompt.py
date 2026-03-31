@@ -20,8 +20,8 @@ API_URL = "https://api.mistral.ai/v1/chat/completions"
 # ========= Presets =========
 PRESETS_OPT_KEY = "mistral_presets_json"
 DEFAULT_PRESETS = {
-    "Flux — Describe": "Describe the image",
-    "SDXL — Tokens": "Describe the image using only comma-separated tokens",
+    "Flux - Describe": "Describe the image",
+    "SDXL - Tokens": "Describe the image using only comma-separated tokens",
 }
 
 def _ensure_presets_in_opts():
@@ -51,7 +51,7 @@ def set_presets(presets: dict):
 
 # ========= Mistral API =========
 
-# Создаем глобальную сессию для сохранения cookies (решает проблему с Cloudflare)
+# Reuse one HTTP session to persist cookies (helps with Cloudflare checks).
 _mistral_session = None
 
 def get_mistral_session():
@@ -67,17 +67,17 @@ def send_to_mistral(prompt, images, temperature, maximum_tokens, top_p):
 
     image_urls = []
     for img in images:
-        # Получаем настройки
+        # Read image constraints from extension settings.
         max_size = int(shared.opts.data.get("mistral_image_max_size", 768))
         max_kb = int(shared.opts.data.get("mistral_image_max_kb", 400))
 
-        # Уменьшаем разрешение
+        # Downscale large images before upload.
         if img.width > max_size or img.height > max_size:
             ratio = min(max_size / img.width, max_size / img.height)
             new_size = (int(img.width * ratio), int(img.height * ratio))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
 
-        # Умное JPEG-сжатие
+        # Shrink JPEG quality until target size is reached.
         quality = 90
         buf = io.BytesIO()
 
@@ -140,18 +140,18 @@ class Script(scripts.Script):
             gr.HTML(
                 """
 <style>
-  /* пресеты */
+  /* presets */
   #mp_preset_bar{display:flex;gap:8px;align-items:flex-end;flex-wrap:nowrap}
   #mp_preset_bar label{display:none !important;}
   #mp_preset_bar .gr-form{margin-bottom:0 !important;}
   #mp_preset_bar .gr-dropdown, #mp_preset_bar .wrap{min-width:240px;}
   #mp_preset_bar .gr-button{white-space:nowrap}
 
-  /* панель загрузки — три равные кнопки */
+  /* upload toolbar: three equal buttons */
   #mp_upload_bar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-items:stretch}
   #mp_upload_bar .gr-button{width:100%}
 
-  /* --- ФИКС: дропзона всегда одной высоты, ничего не дёргается при загрузке --- */
+  /* fixed-height drop zone to avoid layout jumps while uploading */
   #mp_drop{position:relative;isolation:isolate;margin-top:6px;margin-bottom:0;min-height:84px !important;height:84px !important;overflow:hidden;}
 
   #mp_drop .wrap,
@@ -165,7 +165,7 @@ class Script(scripts.Script):
     border:none !important;
   }
 
-  /* Статусы/прогресс — оставляем видимыми */
+  /* keep upload status/progress visible */
   #mp_drop [class*="status"],
   #mp_drop [class*="progress"],
   #mp_drop [data-testid*="status"],
@@ -179,7 +179,7 @@ class Script(scripts.Script):
       visibility:visible !important;
   }
 
-  /* Скрываем стандартные подсказки Gradio ВНУТРИ gr.File, но не ломаем клики (opacity вместо display:none) */
+  /* hide default Gradio hints in gr.File without breaking click handling */
   #mp_drop label,
   #mp_drop .label,
   #mp_drop .upload-text,
@@ -189,9 +189,9 @@ class Script(scripts.Script):
     opacity:0 !important;
   }
 
-  /* текст-название дропзоны — наш оверлей ПОВЕРХ всего */
+  /* custom drop-zone label shown as an overlay */
   #mp_drop::after{
-      content:"Перетащите изображения сюда или нажмите, чтобы выбрать • или кнопку \\"Paste from clipboard\\"";
+      content:"Drag images here or click to select, or use the \\"Paste from clipboard\\" button";
       position:absolute;
       inset:0;
       display:flex;
@@ -206,29 +206,32 @@ class Script(scripts.Script):
       background:var(--body-background-fill);
       text-align:center;
       pointer-events:none;
-      z-index:5; /* <-- критично, чтобы перекрыть стандартный текст */
+      z-index:5; /* keep overlay above default Gradio text */
   }
-  #mp_drop.dragover::after{ content:"Отпустите для добавления"; }
+  #mp_drop.dragover::after{ content:"Drop to add images"; }
 
-  /* Gallery с кнопками удаления */
+  /* gallery with delete buttons */
   #mp_gallery_container{position:relative;margin-top:8px;}
   #mp_gallery .thumbnails{display:grid !important;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;}
   #mp_gallery .thumbnail-item{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;}
   #mp_gallery .thumbnail-item img{width:100%;height:100%;object-fit:cover;}
 
-  /* Кнопка удаления */
+  /* delete button */
   .mp-delete-btn{
     position:absolute;top:4px;right:4px;z-index:10;
     width:24px;height:24px;border-radius:50%;
     background:rgba(0,0,0,0.7);color:#fff;
     border:none;cursor:pointer;
     display:flex;align-items:center;justify-content:center;
-    font-size:16px;line-height:1;
+    padding:0;
+    font-size:15px;line-height:1;
+    font-weight:700;
+    font-family:Arial,sans-serif;
     transition:background 0.2s;
   }
   .mp-delete-btn:hover{background:rgba(220,38,38,0.9);}
   
-    /* По умолчанию скрываем пустую галерею (убирает “пустое место”) */
+    /* hide empty gallery container by default */
     #mp_gallery_container{
       display:none !important;
       margin:0 !important;
@@ -237,10 +240,10 @@ class Script(scripts.Script):
       background:transparent !important;
     }
 
-    /* Показываем контейнер, только когда внутри реально есть хотя бы одна картинка */
+    /* show container only when at least one image exists */
     #mp_gallery_container:has(img){
       display:block !important;
-      margin-top:8px !important; /* контролируемый отступ, когда есть превью */
+      margin-top:8px !important; /* controlled gap when preview appears */
     }
 </style>
 
@@ -248,7 +251,7 @@ class Script(scripts.Script):
 (function(){
   function appRoot(){ try{ return window.gradioApp ? gradioApp() : document; }catch(e){ return document; } }
 
-  // Глобальная функция удаления изображения
+  // Global helper to delete an image by index.
   window.deleteMPImage = function(idx) {
     const app = appRoot();
     const pipe = app.querySelector('#mp_delete_pipe textarea');
@@ -471,11 +474,9 @@ class Script(scripts.Script):
                         <img src="{data_url}" style="width:100%;height:100%;object-fit:cover;" />
                         <button class="mp-delete-btn" 
                                 onclick="(function(idx,btn){{var app=document;try{{app=gradioApp();}}catch(e){{}}var tab=btn.closest('[id*=\\'txt2img\\']')||btn.closest('[id*=\\'img2img\\']');var pipe=tab?tab.querySelector('.mp-delete-pipe-class textarea'):null;if(!pipe){{var all=app.querySelectorAll('.mp-delete-pipe-class textarea');pipe=all[0];}}if(pipe){{pipe.value=idx.toString();pipe.dispatchEvent(new Event('input',{{bubbles:true}}));}}}})({idx},this);return false;"
-                                style="position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:background 0.2s;"
+                                style="position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-size:15px;line-height:1;font-weight:700;font-family:Arial,sans-serif;transition:background 0.2s;"
                                 onmouseover="this.style.background='rgba(220,38,38,0.9)'"
-                                onmouseout="this.style.background='rgba(0,0,0,0.7)'">
-                            ×
-                        </button>
+                                onmouseout="this.style.background='rgba(0,0,0,0.7)'">&times;</button>
                     </div>
                     ''')
 
