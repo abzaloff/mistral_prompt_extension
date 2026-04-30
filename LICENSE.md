@@ -1,6 +1,6 @@
-# Forge Quick Presets Free Non-Commercial License
+# Mistral Prompt Extension Free Non-Commercial License
 
-Copyright (c) 2026 the Forge Quick Presets author.
+Copyright (c) 2026 the Mistral Prompt Extension author.
 
 This project is distributed free of charge for personal, educational, research, and other non-commercial use.
 
