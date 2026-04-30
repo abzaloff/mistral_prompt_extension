@@ -46,3 +46,7 @@ Extension for Forge/Stable Diffusion WebUI that generates prompts from images us
 - Maximum number of images per request is limited in code (`MAX_IMAGES = 30`).
 - Images are automatically downscaled/compressed before upload according to settings.
 - If API key is missing, the extension returns an explicit error in output.
+
+## License
+
+See [LICENSE.md](LICENSE.md).

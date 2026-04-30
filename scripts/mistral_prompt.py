@@ -150,6 +150,13 @@ class Script(scripts.Script):
   /* upload toolbar: three equal buttons */
   #mp_upload_bar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-items:stretch}
   #mp_upload_bar .gr-button{width:100%}
+  
+  /* keep rounded action buttons even if global Compact/theme overrides radius */
+  .mp-rounded-btn,
+  .mp-rounded-btn.gr-button,
+  .mp-rounded-btn button{
+    border-radius:8px !important;
+  }
 
   /* fixed-height drop zone to avoid layout jumps while uploading */
   #mp_drop{position:relative;isolation:isolate;margin-top:6px;margin-bottom:0;min-height:84px !important;height:84px !important;overflow:hidden;}
@@ -208,7 +215,13 @@ class Script(scripts.Script):
       pointer-events:none;
       z-index:5; /* keep overlay above default Gradio text */
   }
-  #mp_drop.dragover::after{ content:"Drop to add images"; }
+  #mp_drop.dragover::after,
+  #mp_drop.border_focus::after{
+      content:"Drop to add images";
+      border-color:#F87215 !important;
+      box-shadow:none !important;
+      background:var(--body-background-fill) !important;
+  }
 
   /* gallery with delete buttons */
   #mp_gallery_container{position:relative;margin-top:8px;}
@@ -298,19 +311,19 @@ class Script(scripts.Script):
                     value=preset_names[0] if preset_names else None,
                     label="", show_label=False,
                 )
-                edit_btn = gr.Button("Edit")
+                edit_btn = gr.Button("Edit", elem_classes=["mp-rounded-btn"])
 
             # Inline editor
             with gr.Box(visible=False) as preset_editor:
                 gr.Markdown("### Preset Editor")
                 with gr.Row():
                     editor_select = gr.Dropdown(choices=preset_names, value=preset_names[0] if preset_names else None, label="Select preset")
-                    close_editor = gr.Button("Close")
+                    close_editor = gr.Button("Close", elem_classes=["mp-rounded-btn"])
                 editor_name = gr.Textbox(label="Preset name")
                 editor_text = gr.Textbox(label="Preset text", lines=4)
                 with gr.Row():
-                    save_btn = gr.Button("Save / Update")
-                    delete_btn = gr.Button("Delete")
+                    save_btn = gr.Button("Save / Update", elem_classes=["mp-rounded-btn"])
+                    delete_btn = gr.Button("Delete", elem_classes=["mp-rounded-btn"])
                 status_md = gr.Markdown(visible=False)
 
             with gr.Row():
@@ -411,9 +424,9 @@ class Script(scripts.Script):
             images_state = gr.State([])
 
             with gr.Row(elem_id="mp_upload_bar"):
-                paste_btn = gr.Button("Paste from clipboard", elem_id="mp_paste_btn")
-                remove_last_btn = gr.Button("Remove last")
-                clear_btn = gr.Button("Clear all")
+                paste_btn = gr.Button("Paste from clipboard", elem_id="mp_paste_btn", elem_classes=["mp-rounded-btn"])
+                remove_last_btn = gr.Button("Remove last", elem_classes=["mp-rounded-btn"])
+                clear_btn = gr.Button("Clear all", elem_classes=["mp-rounded-btn"])
 
             paste_pipe = gr.Textbox(visible=False, elem_id="mp_paste_pipe")
 
@@ -576,8 +589,8 @@ class Script(scripts.Script):
             # ===== Mistral I/O =====
             mistral_output = gr.Textbox(label="Prompt from Mistral", lines=4)
             with gr.Row():
-                get_prompt_btn = gr.Button("Get Prompt from Mistral")
-                insert_btn = gr.Button("Insert into Prompt")
+                get_prompt_btn = gr.Button("Get Prompt from Mistral", elem_classes=["mp-rounded-btn"])
+                insert_btn = gr.Button("Insert into Prompt", elem_classes=["mp-rounded-btn"])
 
             def fetch_prompt(images, init_prompt, append, temp, max_toks, t_p):
                 if not images:
