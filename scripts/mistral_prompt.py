@@ -9,6 +9,7 @@ import io
 import json
 import base64
 import requests
+from urllib.parse import quote
 from PIL import Image
 
 import gradio as gr
@@ -16,6 +17,13 @@ from modules import scripts, shared, processing
 
 MAX_IMAGES = 30
 API_URL = "https://api.mistral.ai/v1/chat/completions"
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+MODEL_CHOICES = [
+    "mistral: pixtral-large-latest",
+    "gemini: gemini-2.5-flash",
+    "gemini: gemini-2.5-pro",
+]
+DEFAULT_MODEL_CHOICE = MODEL_CHOICES[0]
 
 # ========= Presets =========
 PRESETS_OPT_KEY = "mistral_presets_json"
@@ -49,10 +57,11 @@ def set_presets(presets: dict):
     except Exception:
         pass
 
-# ========= Mistral API =========
+# ========= API backends =========
 
 # Reuse one HTTP session to persist cookies (helps with Cloudflare checks).
 _mistral_session = None
+_gemini_session = None
 
 def get_mistral_session():
     global _mistral_session
@@ -60,40 +69,57 @@ def get_mistral_session():
         _mistral_session = requests.Session()
     return _mistral_session
 
-def send_to_mistral(prompt, images, temperature, maximum_tokens, top_p):
+def get_gemini_session():
+    global _gemini_session
+    if _gemini_session is None:
+        _gemini_session = requests.Session()
+    return _gemini_session
+
+def encode_image_for_request(img):
+    # Read image constraints from extension settings.
+    max_size = int(shared.opts.data.get("mistral_image_max_size", 768))
+    max_kb = int(shared.opts.data.get("mistral_image_max_kb", 400))
+
+    # Downscale large images before upload.
+    if img.width > max_size or img.height > max_size:
+        ratio = min(max_size / img.width, max_size / img.height)
+        new_size = (int(img.width * ratio), int(img.height * ratio))
+        img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+    # Shrink JPEG quality until target size is reached.
+    quality = 90
+    buf = io.BytesIO()
+
+    while True:
+        buf.seek(0)
+        buf.truncate()
+
+        img.save(buf, format="JPEG", quality=quality)
+        size_kb = buf.tell() / 1024
+
+        if size_kb <= max_kb or quality <= 40:
+            break
+
+        quality -= 5
+
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+def normalize_model_choice(model_choice):
+    model_choice = (model_choice or DEFAULT_MODEL_CHOICE).strip()
+    if model_choice not in MODEL_CHOICES:
+        model_choice = DEFAULT_MODEL_CHOICE
+
+    provider, model = model_choice.split(":", 1)
+    return provider.strip(), model.strip()
+
+def send_to_mistral(model, prompt, images, temperature, maximum_tokens, top_p):
     api_key = shared.opts.data.get("mistral_api_key", "").strip()
     if not api_key:
         raise ValueError("Mistral API key is not set in Settings.")
 
     image_urls = []
     for img in images:
-        # Read image constraints from extension settings.
-        max_size = int(shared.opts.data.get("mistral_image_max_size", 768))
-        max_kb = int(shared.opts.data.get("mistral_image_max_kb", 400))
-
-        # Downscale large images before upload.
-        if img.width > max_size or img.height > max_size:
-            ratio = min(max_size / img.width, max_size / img.height)
-            new_size = (int(img.width * ratio), int(img.height * ratio))
-            img = img.resize(new_size, Image.Resampling.LANCZOS)
-
-        # Shrink JPEG quality until target size is reached.
-        quality = 90
-        buf = io.BytesIO()
-
-        while True:
-            buf.seek(0)
-            buf.truncate()
-
-            img.save(buf, format="JPEG", quality=quality)
-            size_kb = buf.tell() / 1024
-
-            if size_kb <= max_kb or quality <= 40:
-                break
-
-            quality -= 5
-
-        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        b64 = encode_image_for_request(img)
         image_urls.append(f"data:image/jpeg;base64,{b64}")
 
     if len(image_urls) > MAX_IMAGES:
@@ -104,7 +130,7 @@ def send_to_mistral(prompt, images, temperature, maximum_tokens, top_p):
         content_list.append({"type": "image_url", "image_url": url})
 
     data = {
-        "model": "pixtral-large-latest",
+        "model": model,
         "messages": [{"role": "user", "content": content_list}],
         "temperature": float(temperature),
         "max_tokens": int(maximum_tokens),
@@ -122,11 +148,88 @@ def send_to_mistral(prompt, images, temperature, maximum_tokens, top_p):
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
 
+def send_to_gemini(model, prompt, images, temperature, maximum_tokens, top_p):
+    api_key = shared.opts.data.get("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("Gemini API key is not set in Settings.")
+
+    if not (prompt or "").strip():
+        raise ValueError("Prompt is empty.")
+
+    if len(images or []) > MAX_IMAGES:
+        raise ValueError(f"Maximum {MAX_IMAGES} images supported.")
+
+    parts = []
+    for img in images or []:
+        parts.append({
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": encode_image_for_request(img),
+            }
+        })
+    parts.append({"text": prompt})
+
+    data = {
+        "contents": [{"role": "user", "parts": parts}],
+        "generationConfig": {
+            "temperature": float(temperature),
+            "maxOutputTokens": int(maximum_tokens),
+            "topP": float(top_p),
+        },
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "x-goog-api-key": api_key,
+    }
+
+    url = f"{GEMINI_API_BASE}/{quote(model, safe='')}:generateContent"
+    resp = get_gemini_session().post(url, headers=headers, json=data, timeout=120)
+    if not resp.ok:
+        try:
+            err = resp.json().get("error", {})
+            message = err.get("message") or resp.text
+            status = err.get("status")
+            if status:
+                message = f"{status}: {message}"
+        except Exception:
+            message = resp.text or resp.reason
+        if resp.status_code in (401, 403):
+            raise ValueError(f"Gemini authorization failed: {message}")
+        if resp.status_code == 429:
+            raise ValueError(f"Gemini rate limit exceeded: {message}")
+        raise ValueError(f"Gemini API error {resp.status_code}: {message}")
+
+    payload = resp.json()
+    candidates = payload.get("candidates") or []
+    if not candidates:
+        prompt_feedback = payload.get("promptFeedback") or {}
+        block_reason = prompt_feedback.get("blockReason")
+        if block_reason:
+            raise ValueError(f"Gemini blocked the prompt: {block_reason}")
+        raise ValueError("Gemini returned no candidates.")
+
+    content = candidates[0].get("content") or {}
+    text = "\n".join(part.get("text", "") for part in content.get("parts", []) if part.get("text"))
+    if text.strip():
+        return text.strip()
+
+    finish_reason = candidates[0].get("finishReason")
+    if finish_reason:
+        raise ValueError(f"Gemini returned no text. Finish reason: {finish_reason}")
+    raise ValueError("Gemini returned an empty response.")
+
+def send_to_selected_model(model_choice, prompt, images, temperature, maximum_tokens, top_p):
+    provider, model = normalize_model_choice(model_choice)
+    if provider == "gemini":
+        return send_to_gemini(model, prompt, images, temperature, maximum_tokens, top_p)
+    return send_to_mistral(model, prompt, images, temperature, maximum_tokens, top_p)
+
 # ========= UI Script =========
 
 class Script(scripts.Script):
     def title(self):
-        return "Mistral Prompt"
+        return "Mistral++"
 
     def show(self, is_img2img):
         return scripts.AlwaysVisible
@@ -134,7 +237,7 @@ class Script(scripts.Script):
     def ui(self, is_img2img):
         _ensure_presets_in_opts()
 
-        with gr.Accordion("Mistral Prompt", open=False):
+        with gr.Accordion("Mistral++", open=False):
 
             # ===== CSS + JS: dropzone visuals + delete buttons =====
             gr.HTML(
@@ -327,7 +430,14 @@ class Script(scripts.Script):
                 status_md = gr.Markdown(visible=False)
 
             with gr.Row():
-                prompt_text = gr.Textbox(label="Initial prompt for Mistral", value="Describe the image")
+                prompt_text = gr.Textbox(label="Initial prompt", value="Describe the image")
+
+            with gr.Row():
+                model_choice = gr.Dropdown(
+                    choices=MODEL_CHOICES,
+                    value=DEFAULT_MODEL_CHOICE,
+                    label="Model",
+                )
 
             def on_select_apply(name, presets):
                 if not name:
@@ -580,23 +690,21 @@ class Script(scripts.Script):
 
             # ===== Extra tune =====
             with gr.Row():
-                append_text = gr.Textbox(label="Append to Mistral prompt", placeholder="e.g. in Van Gogh style, 8K resolution")
+                append_text = gr.Textbox(label="Append to generated prompt", placeholder="e.g. in Van Gogh style, 8K resolution")
             with gr.Row():
                 temperature = gr.Slider(0.0, 1.5, value=0.7, step=0.1, label="Temperature")
                 max_tokens = gr.Slider(1, 32768, value=4096, step=1, label="Max tokens")
                 top_p = gr.Slider(0.0, 1.0, value=1.0, step=0.1, label="Top P")
 
-            # ===== Mistral I/O =====
-            mistral_output = gr.Textbox(label="Prompt from Mistral", lines=4)
+            # ===== Model I/O =====
+            mistral_output = gr.Textbox(label="Prompt from model", lines=4)
             with gr.Row():
-                get_prompt_btn = gr.Button("Get Prompt from Mistral", elem_classes=["mp-rounded-btn"])
+                get_prompt_btn = gr.Button("Get Prompt", elem_classes=["mp-rounded-btn"])
                 insert_btn = gr.Button("Insert into Prompt", elem_classes=["mp-rounded-btn"])
 
-            def fetch_prompt(images, init_prompt, append, temp, max_toks, t_p):
-                if not images:
-                    return "No images uploaded."
+            def fetch_prompt(model_name, images, init_prompt, append, temp, max_toks, t_p):
                 try:
-                    text = send_to_mistral(init_prompt, images, temp, max_toks, t_p)
+                    text = send_to_selected_model(model_name, init_prompt, images, temp, max_toks, t_p)
                     if (append or "").strip():
                         text = f"{text}, {append.strip()}"
                     return text
@@ -605,7 +713,7 @@ class Script(scripts.Script):
 
             get_prompt_btn.click(
                 fn=fetch_prompt,
-                inputs=[images_state, prompt_text, append_text, temperature, max_tokens, top_p],
+                inputs=[model_choice, images_state, prompt_text, append_text, temperature, max_tokens, top_p],
                 outputs=[mistral_output],
             )
 
@@ -627,11 +735,16 @@ class Script(scripts.Script):
 # ========= Settings =========
 
 def on_ui_settings():
-    section = ("mistral_prompt", "Mistral Prompt Generator")
+    section = ("mistral_prompt", "Mistral++")
 
     shared.opts.add_option(
         "mistral_api_key",
         shared.OptionInfo("", "Mistral API Key", section=section)
+    )
+
+    shared.opts.add_option(
+        "GEMINI_API_KEY",
+        shared.OptionInfo("", "Gemini API Key", section=section)
     )
 
     shared.opts.add_option(
