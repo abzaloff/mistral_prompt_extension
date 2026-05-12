@@ -9,7 +9,7 @@ import io
 import json
 import base64
 import requests
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 from PIL import Image
 
 import gradio as gr
@@ -113,6 +113,15 @@ def get_lmstudio_session():
 def get_lmstudio_api_base():
     return (shared.opts.data.get("lmstudio_api_base", LMSTUDIO_DEFAULT_API_BASE) or LMSTUDIO_DEFAULT_API_BASE).strip().rstrip("/")
 
+def get_lmstudio_native_api_base():
+    api_base = get_lmstudio_api_base()
+    parsed = urlsplit(api_base)
+    path = parsed.path.rstrip("/")
+    if path.endswith("/v1"):
+        path = path[:-3].rstrip("/")
+    path = f"{path}/api/v1"
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
 def get_lmstudio_headers():
     headers = {
         "Content-Type": "application/json",
@@ -138,6 +147,24 @@ def fetch_lmstudio_model_choices(timeout=5):
         if model_id:
             models.append(f"lmstudio: {model_id}")
     return sorted(set(models))
+
+def unload_lmstudio_model(model, timeout=10):
+    api_base = get_lmstudio_native_api_base()
+    resp = get_lmstudio_session().post(
+        f"{api_base}/models/unload",
+        headers=get_lmstudio_headers(),
+        json={"instance_id": model},
+        timeout=timeout,
+    )
+    if not resp.ok:
+        try:
+            err = resp.json().get("error", {})
+            message = err.get("message") if isinstance(err, dict) else None
+            message = message or resp.text
+        except Exception:
+            message = resp.text or resp.reason
+        raise ValueError(f"LM Studio unload error {resp.status_code}: {message}")
+    return resp.json()
 
 def get_model_choices(include_lmstudio=True, lmstudio_timeout=1.5):
     choices = list(MODEL_CHOICES)
@@ -389,23 +416,33 @@ class Script(scripts.Script):
   #mp_preset_bar label{display:none !important;}
   #mp_preset_bar .gr-form{margin-bottom:0 !important;}
   #mp_preset_bar .gr-dropdown, #mp_preset_bar .wrap{min-width:240px;}
-  #mp_preset_bar .gr-button{white-space:nowrap}
+  #mp_preset_bar .gr-button{white-space:nowrap;width:100% !important;}
 
   /* upload toolbar: three equal buttons */
-  #mp_upload_bar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-items:stretch}
+  #mp_upload_bar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-items:stretch;margin-top:-8px !important;}
   #mp_upload_bar .gr-button{width:100%}
 
-  /* keep LM Studio refresh aligned with the model dropdown instead of stretching tall */
+  /* keep LM Studio controls aligned as one compact row */
   #mp_model_bar{align-items:flex-end !important;}
+  #mp_model_bar .gr-form{min-width:0 !important;}
+  #mp_model_bar .gr-button{width:100% !important;}
   #mp_refresh_lmstudio_models,
   #mp_refresh_lmstudio_models.gr-button,
   #mp_refresh_lmstudio_models button{
     height:42px !important;
     min-height:42px !important;
-    align-self:flex-end !important;
     padding-top:0 !important;
     padding-bottom:0 !important;
   }
+  #mp_lmstudio_auto_unload,
+  #mp_lmstudio_auto_unload.gr-checkbox,
+  #mp_lmstudio_auto_unload label{
+    min-height:42px !important;
+    align-items:center !important;
+  }
+  #mp_lmstudio_auto_unload{min-width:190px;}
+  #mp_improve_prompt_bar{margin-top:-16px !important;margin-bottom:-4px !important;}
+  #mp_improve_prompt_enabled{min-height:24px !important;}
   
   /* keep rounded action buttons even if global Compact/theme overrides radius */
   .mp-rounded-btn,
@@ -556,18 +593,69 @@ class Script(scripts.Script):
 """
             )
 
+            with gr.Row(elem_id="mp_model_bar"):
+                current_model_choices = get_model_choices()
+                initial_is_lmstudio = normalize_model_choice(DEFAULT_MODEL_CHOICE)[0] == "lmstudio"
+                with gr.Column(scale=1, min_width=260):
+                    model_choice = gr.Dropdown(
+                        choices=current_model_choices,
+                        value=DEFAULT_MODEL_CHOICE,
+                        label="Model",
+                    )
+                with gr.Column(scale=0, min_width=210, visible=initial_is_lmstudio) as auto_unload_col:
+                    auto_unload_lmstudio = gr.Checkbox(
+                        label="Auto-unload LM model",
+                        value=False,
+                        elem_id="mp_lmstudio_auto_unload",
+                    )
+                with gr.Column(scale=1, min_width=260):
+                    refresh_lmstudio_models_btn = gr.Button(
+                        "Refresh LM Studio models",
+                        elem_id="mp_refresh_lmstudio_models",
+                        elem_classes=["mp-rounded-btn"],
+                    )
+
+            def is_lmstudio_choice(model_name):
+                provider, _ = normalize_model_choice(model_name)
+                return provider == "lmstudio"
+
+            def update_lmstudio_options_visibility(model_name, auto_unload, improve_enabled):
+                if is_lmstudio_choice(model_name):
+                    return (
+                        gr.update(visible=True),
+                        gr.update(value=auto_unload),
+                        gr.update(visible=True, value=improve_enabled),
+                        gr.update(visible=bool(improve_enabled)),
+                        gr.update(),
+                    )
+                return (
+                    gr.update(visible=False),
+                    gr.update(value=False),
+                    gr.update(visible=False, value=False),
+                    gr.update(visible=False),
+                    gr.update(value=""),
+                )
+
+            def refresh_lmstudio_models(current_choice, auto_unload, improve_enabled):
+                choices = get_model_choices(lmstudio_timeout=5)
+                value = current_choice if current_choice in choices else DEFAULT_MODEL_CHOICE
+                auto_col_update, auto_update, improve_update, row_update, source_update = update_lmstudio_options_visibility(value, auto_unload, improve_enabled)
+                return gr.update(choices=choices, value=value), auto_col_update, auto_update, improve_update, row_update, source_update
+
             # ===== Presets row =====
             presets_state = gr.State(get_presets())
             preset_names = sorted(list(get_presets().keys()))
             editor_visible = gr.State(False)
 
             with gr.Row(elem_id="mp_preset_bar"):
-                header_presets = gr.Dropdown(
-                    choices=preset_names,
-                    value=preset_names[0] if preset_names else None,
-                    label="", show_label=False,
-                )
-                edit_btn = gr.Button("Edit", elem_classes=["mp-rounded-btn"])
+                with gr.Column(scale=1, min_width=260):
+                    header_presets = gr.Dropdown(
+                        choices=preset_names,
+                        value=preset_names[0] if preset_names else None,
+                        label="", show_label=False,
+                    )
+                with gr.Column(scale=1, min_width=260):
+                    edit_btn = gr.Button("Edit", elem_classes=["mp-rounded-btn"])
 
             # Inline editor
             with gr.Box(visible=False) as preset_editor:
@@ -585,35 +673,42 @@ class Script(scripts.Script):
             with gr.Row():
                 prompt_text = gr.Textbox(label="Initial prompt", value="Describe the image")
 
-            with gr.Row():
+            with gr.Row(elem_id="mp_improve_prompt_bar"):
+                improve_prompt_enabled = gr.Checkbox(
+                    label="Improve existing prompt",
+                    value=False,
+                    visible=False,
+                    elem_id="mp_improve_prompt_enabled",
+                )
+
+            with gr.Row(visible=False) as improve_prompt_row:
                 source_prompt_text = gr.Textbox(
                     label="Prompt to improve",
                     placeholder="Paste the prompt you want the selected model to improve",
                     lines=3,
                 )
 
-            with gr.Row(elem_id="mp_model_bar"):
-                current_model_choices = get_model_choices()
-                model_choice = gr.Dropdown(
-                    choices=current_model_choices,
-                    value=DEFAULT_MODEL_CHOICE,
-                    label="Model",
-                )
-                refresh_lmstudio_models_btn = gr.Button(
-                    "Refresh LM Studio models",
-                    elem_id="mp_refresh_lmstudio_models",
-                    elem_classes=["mp-rounded-btn"],
-                )
+            def toggle_improve_prompt(enabled):
+                if enabled:
+                    return gr.update(visible=True), gr.update()
+                return gr.update(visible=False), gr.update(value="")
 
-            def refresh_lmstudio_models(current_choice):
-                choices = get_model_choices(lmstudio_timeout=5)
-                value = current_choice if current_choice in choices else DEFAULT_MODEL_CHOICE
-                return gr.update(choices=choices, value=value)
+            improve_prompt_enabled.change(
+                fn=toggle_improve_prompt,
+                inputs=[improve_prompt_enabled],
+                outputs=[improve_prompt_row, source_prompt_text],
+            )
+
+            model_choice.change(
+                fn=update_lmstudio_options_visibility,
+                inputs=[model_choice, auto_unload_lmstudio, improve_prompt_enabled],
+                outputs=[auto_unload_col, auto_unload_lmstudio, improve_prompt_enabled, improve_prompt_row, source_prompt_text],
+            )
 
             refresh_lmstudio_models_btn.click(
                 fn=refresh_lmstudio_models,
-                inputs=[model_choice],
-                outputs=[model_choice],
+                inputs=[model_choice, auto_unload_lmstudio, improve_prompt_enabled],
+                outputs=[model_choice, auto_unload_col, auto_unload_lmstudio, improve_prompt_enabled, improve_prompt_row, source_prompt_text],
             )
 
             def on_select_apply(name, presets):
@@ -879,19 +974,28 @@ class Script(scripts.Script):
                 get_prompt_btn = gr.Button("Get Prompt", elem_classes=["mp-rounded-btn"])
                 insert_btn = gr.Button("Insert into Prompt", elem_classes=["mp-rounded-btn"])
 
-            def fetch_prompt(model_name, images, init_prompt, source_prompt, append, temp, max_toks, t_p):
+            def fetch_prompt(model_name, auto_unload, images, init_prompt, source_prompt, append, temp, max_toks, t_p):
                 try:
+                    provider, normalized_model = normalize_model_choice(model_name)
                     request_prompt = build_prompt_for_request(init_prompt, source_prompt)
                     text = send_to_selected_model(model_name, request_prompt, images, temp, max_toks, t_p)
                     if (append or "").strip():
                         text = f"{text}, {append.strip()}"
+                    if auto_unload and provider == "lmstudio":
+                        try:
+                            unload_lmstudio_model(normalized_model)
+                        except Exception as unload_error:
+                            message = f"LM Studio auto-unload failed: {unload_error}"
+                            print(f"Mistral++: {message}")
+                            if hasattr(gr, "Warning"):
+                                gr.Warning(message)
                     return text
                 except Exception as e:
                     return f"Error: {e}"
 
             get_prompt_btn.click(
                 fn=fetch_prompt,
-                inputs=[model_choice, images_state, prompt_text, source_prompt_text, append_text, temperature, max_tokens, top_p],
+                inputs=[model_choice, auto_unload_lmstudio, images_state, prompt_text, source_prompt_text, append_text, temperature, max_tokens, top_p],
                 outputs=[mistral_output],
             )
 
