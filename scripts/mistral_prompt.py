@@ -18,6 +18,7 @@ from modules import scripts, shared, processing
 MAX_IMAGES = 30
 API_URL = "https://api.mistral.ai/v1/chat/completions"
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+LMSTUDIO_DEFAULT_API_BASE = "http://127.0.0.1:1234/v1"
 MODEL_CHOICES = [
     "mistral: pixtral-large-latest",
     "gemini: gemini-2.5-flash",
@@ -27,15 +28,42 @@ DEFAULT_MODEL_CHOICE = MODEL_CHOICES[0]
 
 # ========= Presets =========
 PRESETS_OPT_KEY = "mistral_presets_json"
+OLD_LMSTUDIO_LLM_PRESET = "Improve the prompt. Analyze the tokens and rewrite the prompt in clear English. Give an expanded answer in English."
+LMSTUDIO_LLM_PRESET = "Rewrite the user's input into one clear, detailed English image prompt. Accept any input format, including comma-separated tokens, short notes, fragments, or natural language. Expand the idea into a coherent descriptive prompt with richer visual detail, while preserving the original subject, mood, style, composition, and important attributes. Do not add unrelated elements. Output only one final prompt in English. Do not include explanations, labels, introductions, alternatives, bullet points, quotation marks, or any extra text."
 DEFAULT_PRESETS = {
     "Flux - Describe": "Describe the image",
     "SDXL - Tokens": "Describe the image using only comma-separated tokens",
+    "LM Studio LLM": LMSTUDIO_LLM_PRESET,
 }
 
 def _ensure_presets_in_opts():
     raw = shared.opts.data.get(PRESETS_OPT_KEY, "").strip()
     if not raw:
         shared.opts.data[PRESETS_OPT_KEY] = json.dumps(DEFAULT_PRESETS, ensure_ascii=False)
+        try:
+            shared.opts.save(shared.config_filename)
+        except Exception:
+            pass
+        return
+
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return
+
+    if not isinstance(data, dict):
+        return
+
+    changed = False
+    for name, text in DEFAULT_PRESETS.items():
+        if name not in data:
+            data[name] = text
+            changed = True
+    if data.get("LM Studio LLM") == OLD_LMSTUDIO_LLM_PRESET:
+        data["LM Studio LLM"] = LMSTUDIO_LLM_PRESET
+        changed = True
+    if changed:
+        shared.opts.data[PRESETS_OPT_KEY] = json.dumps(data, ensure_ascii=False)
         try:
             shared.opts.save(shared.config_filename)
         except Exception:
@@ -62,6 +90,7 @@ def set_presets(presets: dict):
 # Reuse one HTTP session to persist cookies (helps with Cloudflare checks).
 _mistral_session = None
 _gemini_session = None
+_lmstudio_session = None
 
 def get_mistral_session():
     global _mistral_session
@@ -74,6 +103,50 @@ def get_gemini_session():
     if _gemini_session is None:
         _gemini_session = requests.Session()
     return _gemini_session
+
+def get_lmstudio_session():
+    global _lmstudio_session
+    if _lmstudio_session is None:
+        _lmstudio_session = requests.Session()
+    return _lmstudio_session
+
+def get_lmstudio_api_base():
+    return (shared.opts.data.get("lmstudio_api_base", LMSTUDIO_DEFAULT_API_BASE) or LMSTUDIO_DEFAULT_API_BASE).strip().rstrip("/")
+
+def get_lmstudio_headers():
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    }
+    api_key = (shared.opts.data.get("lmstudio_api_key", "") or "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+def fetch_lmstudio_model_choices(timeout=5):
+    api_base = get_lmstudio_api_base()
+    resp = get_lmstudio_session().get(
+        f"{api_base}/models",
+        headers=get_lmstudio_headers(),
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    models = []
+    for item in payload.get("data", []):
+        model_id = item.get("id") if isinstance(item, dict) else None
+        if model_id:
+            models.append(f"lmstudio: {model_id}")
+    return sorted(set(models))
+
+def get_model_choices(include_lmstudio=True, lmstudio_timeout=1.5):
+    choices = list(MODEL_CHOICES)
+    if include_lmstudio:
+        try:
+            choices.extend(fetch_lmstudio_model_choices(timeout=lmstudio_timeout))
+        except Exception:
+            pass
+    return choices
 
 def encode_image_for_request(img):
     # Read image constraints from extension settings.
@@ -106,11 +179,24 @@ def encode_image_for_request(img):
 
 def normalize_model_choice(model_choice):
     model_choice = (model_choice or DEFAULT_MODEL_CHOICE).strip()
-    if model_choice not in MODEL_CHOICES:
+    if ":" not in model_choice:
         model_choice = DEFAULT_MODEL_CHOICE
 
     provider, model = model_choice.split(":", 1)
-    return provider.strip(), model.strip()
+    provider = provider.strip().lower()
+    model = model.strip()
+    if not model or provider not in ("mistral", "gemini", "lmstudio"):
+        return normalize_model_choice(DEFAULT_MODEL_CHOICE)
+    return provider, model
+
+def build_prompt_for_request(instruction_prompt, source_prompt):
+    instruction_prompt = (instruction_prompt or "").strip()
+    source_prompt = (source_prompt or "").strip()
+    if not source_prompt:
+        return instruction_prompt
+    if not instruction_prompt:
+        return source_prompt
+    return f"{instruction_prompt}\n\nPrompt to improve:\n{source_prompt}"
 
 def send_to_mistral(model, prompt, images, temperature, maximum_tokens, top_p):
     api_key = shared.opts.data.get("mistral_api_key", "").strip()
@@ -219,8 +305,63 @@ def send_to_gemini(model, prompt, images, temperature, maximum_tokens, top_p):
         raise ValueError(f"Gemini returned no text. Finish reason: {finish_reason}")
     raise ValueError("Gemini returned an empty response.")
 
+def send_to_lmstudio(model, prompt, images, temperature, maximum_tokens, top_p):
+    if not (prompt or "").strip():
+        raise ValueError("Prompt is empty.")
+
+    if len(images or []) > MAX_IMAGES:
+        raise ValueError(f"Maximum {MAX_IMAGES} images supported.")
+
+    content_list = [{"type": "text", "text": prompt}]
+    for img in images or []:
+        b64 = encode_image_for_request(img)
+        content_list.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+        })
+
+    data = {
+        "model": model,
+        "messages": [{"role": "user", "content": content_list}],
+        "temperature": float(temperature),
+        "max_tokens": int(maximum_tokens),
+        "top_p": float(top_p),
+    }
+
+    api_base = get_lmstudio_api_base()
+    resp = get_lmstudio_session().post(
+        f"{api_base}/chat/completions",
+        headers=get_lmstudio_headers(),
+        json=data,
+        timeout=120,
+    )
+    if not resp.ok:
+        try:
+            err = resp.json().get("error", {})
+            message = err.get("message") if isinstance(err, dict) else None
+            message = message or resp.text
+        except Exception:
+            message = resp.text or resp.reason
+        raise ValueError(f"LM Studio API error {resp.status_code}: {message}")
+
+    payload = resp.json()
+    choices = payload.get("choices") or []
+    if not choices:
+        raise ValueError("LM Studio returned no choices.")
+    message = choices[0].get("message") or {}
+    content = message.get("content", "")
+    if isinstance(content, list):
+        text = "\n".join(part.get("text", "") for part in content if isinstance(part, dict) and part.get("text"))
+    else:
+        text = str(content or "")
+    if text.strip():
+        return text.strip()
+    raise ValueError("LM Studio returned an empty response.")
+
 def send_to_selected_model(model_choice, prompt, images, temperature, maximum_tokens, top_p):
     provider, model = normalize_model_choice(model_choice)
+    if provider == "lmstudio":
+        return send_to_lmstudio(model, prompt, images, temperature, maximum_tokens, top_p)
     if provider == "gemini":
         return send_to_gemini(model, prompt, images, temperature, maximum_tokens, top_p)
     return send_to_mistral(model, prompt, images, temperature, maximum_tokens, top_p)
@@ -253,6 +394,18 @@ class Script(scripts.Script):
   /* upload toolbar: three equal buttons */
   #mp_upload_bar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-items:stretch}
   #mp_upload_bar .gr-button{width:100%}
+
+  /* keep LM Studio refresh aligned with the model dropdown instead of stretching tall */
+  #mp_model_bar{align-items:flex-end !important;}
+  #mp_refresh_lmstudio_models,
+  #mp_refresh_lmstudio_models.gr-button,
+  #mp_refresh_lmstudio_models button{
+    height:42px !important;
+    min-height:42px !important;
+    align-self:flex-end !important;
+    padding-top:0 !important;
+    padding-bottom:0 !important;
+  }
   
   /* keep rounded action buttons even if global Compact/theme overrides radius */
   .mp-rounded-btn,
@@ -433,11 +586,35 @@ class Script(scripts.Script):
                 prompt_text = gr.Textbox(label="Initial prompt", value="Describe the image")
 
             with gr.Row():
+                source_prompt_text = gr.Textbox(
+                    label="Prompt to improve",
+                    placeholder="Paste the prompt you want the selected model to improve",
+                    lines=3,
+                )
+
+            with gr.Row(elem_id="mp_model_bar"):
+                current_model_choices = get_model_choices()
                 model_choice = gr.Dropdown(
-                    choices=MODEL_CHOICES,
+                    choices=current_model_choices,
                     value=DEFAULT_MODEL_CHOICE,
                     label="Model",
                 )
+                refresh_lmstudio_models_btn = gr.Button(
+                    "Refresh LM Studio models",
+                    elem_id="mp_refresh_lmstudio_models",
+                    elem_classes=["mp-rounded-btn"],
+                )
+
+            def refresh_lmstudio_models(current_choice):
+                choices = get_model_choices(lmstudio_timeout=5)
+                value = current_choice if current_choice in choices else DEFAULT_MODEL_CHOICE
+                return gr.update(choices=choices, value=value)
+
+            refresh_lmstudio_models_btn.click(
+                fn=refresh_lmstudio_models,
+                inputs=[model_choice],
+                outputs=[model_choice],
+            )
 
             def on_select_apply(name, presets):
                 if not name:
@@ -702,9 +879,10 @@ class Script(scripts.Script):
                 get_prompt_btn = gr.Button("Get Prompt", elem_classes=["mp-rounded-btn"])
                 insert_btn = gr.Button("Insert into Prompt", elem_classes=["mp-rounded-btn"])
 
-            def fetch_prompt(model_name, images, init_prompt, append, temp, max_toks, t_p):
+            def fetch_prompt(model_name, images, init_prompt, source_prompt, append, temp, max_toks, t_p):
                 try:
-                    text = send_to_selected_model(model_name, init_prompt, images, temp, max_toks, t_p)
+                    request_prompt = build_prompt_for_request(init_prompt, source_prompt)
+                    text = send_to_selected_model(model_name, request_prompt, images, temp, max_toks, t_p)
                     if (append or "").strip():
                         text = f"{text}, {append.strip()}"
                     return text
@@ -713,7 +891,7 @@ class Script(scripts.Script):
 
             get_prompt_btn.click(
                 fn=fetch_prompt,
-                inputs=[model_choice, images_state, prompt_text, append_text, temperature, max_tokens, top_p],
+                inputs=[model_choice, images_state, prompt_text, source_prompt_text, append_text, temperature, max_tokens, top_p],
                 outputs=[mistral_output],
             )
 
@@ -748,10 +926,24 @@ def on_ui_settings():
     )
 
     shared.opts.add_option(
+        "lmstudio_api_base",
+        shared.OptionInfo(
+            LMSTUDIO_DEFAULT_API_BASE,
+            "LM Studio API Base",
+            section=section
+        )
+    )
+
+    shared.opts.add_option(
+        "lmstudio_api_key",
+        shared.OptionInfo("", "LM Studio API Key (optional)", section=section)
+    )
+
+    shared.opts.add_option(
         "mistral_image_max_size",
         shared.OptionInfo(
             768,
-            "Max image size sent to Mistral (longest side, px)",
+            "Max image size sent to model (longest side, px)",
             section=section
         )
     )
@@ -760,7 +952,7 @@ def on_ui_settings():
         "mistral_image_max_kb",
         shared.OptionInfo(
             400,
-            "Max JPEG size sent to Mistral (KB)",
+            "Max JPEG size sent to model (KB)",
             section=section
         )
     )
