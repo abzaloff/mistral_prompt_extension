@@ -441,7 +441,7 @@ class Script(scripts.Script):
     align-items:center !important;
   }
   #mp_lmstudio_auto_unload{min-width:190px;}
-  #mp_improve_prompt_bar{margin-top:-16px !important;margin-bottom:6px !important;}
+  #mp_improve_prompt_bar{margin-top:-10px !important;margin-bottom:6px !important;}
   #mp_improve_prompt_enabled{min-height:24px !important;}
   
   /* keep rounded action buttons even if global Compact/theme overrides radius */
