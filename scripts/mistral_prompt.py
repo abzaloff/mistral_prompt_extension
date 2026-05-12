@@ -441,7 +441,7 @@ class Script(scripts.Script):
     align-items:center !important;
   }
   #mp_lmstudio_auto_unload{min-width:190px;}
-  #mp_improve_prompt_bar{margin-top:-16px !important;margin-bottom:-4px !important;}
+  #mp_improve_prompt_bar{margin-top:-16px !important;margin-bottom:6px !important;}
   #mp_improve_prompt_enabled{min-height:24px !important;}
   
   /* keep rounded action buttons even if global Compact/theme overrides radius */
@@ -619,28 +619,22 @@ class Script(scripts.Script):
                 provider, _ = normalize_model_choice(model_name)
                 return provider == "lmstudio"
 
-            def update_lmstudio_options_visibility(model_name, auto_unload, improve_enabled):
+            def update_lmstudio_options_visibility(model_name, auto_unload):
                 if is_lmstudio_choice(model_name):
                     return (
                         gr.update(visible=True),
                         gr.update(value=auto_unload),
-                        gr.update(visible=True, value=improve_enabled),
-                        gr.update(visible=bool(improve_enabled)),
-                        gr.update(),
                     )
                 return (
                     gr.update(visible=False),
                     gr.update(value=False),
-                    gr.update(visible=False, value=False),
-                    gr.update(visible=False),
-                    gr.update(value=""),
                 )
 
-            def refresh_lmstudio_models(current_choice, auto_unload, improve_enabled):
+            def refresh_lmstudio_models(current_choice, auto_unload):
                 choices = get_model_choices(lmstudio_timeout=5)
                 value = current_choice if current_choice in choices else DEFAULT_MODEL_CHOICE
-                auto_col_update, auto_update, improve_update, row_update, source_update = update_lmstudio_options_visibility(value, auto_unload, improve_enabled)
-                return gr.update(choices=choices, value=value), auto_col_update, auto_update, improve_update, row_update, source_update
+                auto_col_update, auto_update = update_lmstudio_options_visibility(value, auto_unload)
+                return gr.update(choices=choices, value=value), auto_col_update, auto_update
 
             # ===== Presets row =====
             presets_state = gr.State(get_presets())
@@ -677,7 +671,6 @@ class Script(scripts.Script):
                 improve_prompt_enabled = gr.Checkbox(
                     label="Improve existing prompt",
                     value=False,
-                    visible=False,
                     elem_id="mp_improve_prompt_enabled",
                 )
 
@@ -701,14 +694,14 @@ class Script(scripts.Script):
 
             model_choice.change(
                 fn=update_lmstudio_options_visibility,
-                inputs=[model_choice, auto_unload_lmstudio, improve_prompt_enabled],
-                outputs=[auto_unload_col, auto_unload_lmstudio, improve_prompt_enabled, improve_prompt_row, source_prompt_text],
+                inputs=[model_choice, auto_unload_lmstudio],
+                outputs=[auto_unload_col, auto_unload_lmstudio],
             )
 
             refresh_lmstudio_models_btn.click(
                 fn=refresh_lmstudio_models,
-                inputs=[model_choice, auto_unload_lmstudio, improve_prompt_enabled],
-                outputs=[model_choice, auto_unload_col, auto_unload_lmstudio, improve_prompt_enabled, improve_prompt_row, source_prompt_text],
+                inputs=[model_choice, auto_unload_lmstudio],
+                outputs=[model_choice, auto_unload_col, auto_unload_lmstudio],
             )
 
             def on_select_apply(name, presets):
