@@ -411,48 +411,89 @@ class Script(scripts.Script):
             gr.HTML(
                 """
 <style>
+  :root{
+    --mp-gap:8px;
+    --mp-gap-tight:6px;
+    --mp-radius:8px;
+    --mp-control-height:42px;
+    --mp-thumb-size:120px;
+    --mp-delete-size:24px;
+  }
+  .mp-compact-row{
+    gap:var(--mp-gap) !important;
+    align-items:flex-end !important;
+  }
+  .mp-action-grid{
+    display:grid !important;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:var(--mp-gap);
+    align-items:stretch;
+  }
+  .mp-two-column-grid{
+    display:grid !important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:var(--mp-gap);
+    align-items:stretch;
+  }
+  .mp-action-grid .gr-button,
+  .mp-two-column-grid .gr-button,
+  .mp-compact-row .gr-button{
+    width:100% !important;
+  }
+  .mp-action-grid .gr-button,
+  .mp-two-column-grid .gr-button,
+  .mp-action-grid button,
+  .mp-two-column-grid button,
+  #mp_refresh_lmstudio_models,
+  #mp_refresh_lmstudio_models.gr-button,
+  #mp_refresh_lmstudio_models button{
+    min-height:var(--mp-control-height) !important;
+  }
+  .mp-rounded-btn,
+  .mp-rounded-btn.gr-button,
+  .mp-rounded-btn button{
+    border-radius:var(--mp-radius) !important;
+  }
+
   /* presets */
-  #mp_preset_bar{display:flex;gap:8px;align-items:flex-end;flex-wrap:nowrap}
+  #mp_preset_bar{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--mp-gap);align-items:flex-end;}
   #mp_preset_bar label{display:none !important;}
   #mp_preset_bar .gr-form{margin-bottom:0 !important;}
   #mp_preset_bar .gr-dropdown, #mp_preset_bar .wrap{min-width:240px;}
   #mp_preset_bar .gr-button{white-space:nowrap;width:100% !important;}
 
   /* upload toolbar: three equal buttons */
-  #mp_upload_bar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;align-items:stretch;margin-top:-8px !important;}
+  #mp_upload_bar{display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--mp-gap);align-items:stretch;margin-top:var(--mp-gap-tight) !important;}
   #mp_upload_bar .gr-button{width:100%}
 
+  /* output actions */
+  #mp_output_actions{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--mp-gap);align-items:stretch;}
+  #mp_output_actions .gr-button{width:100% !important;min-height:var(--mp-control-height) !important;}
+
   /* keep LM Studio controls aligned as one compact row */
-  #mp_model_bar{align-items:flex-end !important;}
+  #mp_model_bar{gap:var(--mp-gap) !important;align-items:flex-end !important;}
   #mp_model_bar .gr-form{min-width:0 !important;}
   #mp_model_bar .gr-button{width:100% !important;}
   #mp_refresh_lmstudio_models,
   #mp_refresh_lmstudio_models.gr-button,
   #mp_refresh_lmstudio_models button{
-    height:42px !important;
-    min-height:42px !important;
+    height:var(--mp-control-height) !important;
+    min-height:var(--mp-control-height) !important;
     padding-top:0 !important;
     padding-bottom:0 !important;
   }
   #mp_lmstudio_auto_unload,
   #mp_lmstudio_auto_unload.gr-checkbox,
   #mp_lmstudio_auto_unload label{
-    min-height:42px !important;
+    min-height:var(--mp-control-height) !important;
     align-items:center !important;
   }
   #mp_lmstudio_auto_unload{min-width:190px;}
-  #mp_improve_prompt_bar{margin-top:-10px !important;margin-bottom:6px !important;}
+  #mp_improve_prompt_bar{margin-top:var(--mp-gap-tight) !important;margin-bottom:var(--mp-gap-tight) !important;}
   #mp_improve_prompt_enabled{min-height:24px !important;}
-  
-  /* keep rounded action buttons even if global Compact/theme overrides radius */
-  .mp-rounded-btn,
-  .mp-rounded-btn.gr-button,
-  .mp-rounded-btn button{
-    border-radius:8px !important;
-  }
 
   /* fixed-height drop zone to avoid layout jumps while uploading */
-  #mp_drop{position:relative;isolation:isolate;margin-top:6px;margin-bottom:0;min-height:84px !important;height:84px !important;overflow:hidden;}
+  #mp_drop{position:relative;isolation:isolate;margin-top:var(--mp-gap) !important;margin-bottom:0;min-height:84px !important;height:84px !important;overflow:hidden;}
 
   #mp_drop .wrap,
   #mp_drop .file-wrap,
@@ -497,12 +538,12 @@ class Script(scripts.Script):
       display:flex;
       align-items:center;
       justify-content:center;
-      padding:0 14px;
+      padding:0 calc(var(--mp-gap) * 2);
       font-size:13.5px;
       font-weight:600;
       opacity:.95;
       border:1.5px dashed var(--block-border-color);
-      border-radius:8px;
+      border-radius:var(--mp-radius);
       background:var(--body-background-fill);
       text-align:center;
       pointer-events:none;
@@ -517,15 +558,28 @@ class Script(scripts.Script):
   }
 
   /* gallery with delete buttons */
-  #mp_gallery_container{position:relative;margin-top:8px;}
-  #mp_gallery .thumbnails{display:grid !important;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;}
-  #mp_gallery .thumbnail-item{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;}
-  #mp_gallery .thumbnail-item img{width:100%;height:100%;object-fit:cover;}
+  #mp_gallery_container{position:relative;margin-top:var(--mp-gap);}
+  #mp_custom_gallery .mp-thumbnails{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(var(--mp-thumb-size),1fr));
+    gap:var(--mp-gap);
+  }
+  #mp_custom_gallery .thumbnail-item{
+    position:relative;
+    aspect-ratio:1;
+    border-radius:var(--mp-radius);
+    overflow:hidden;
+  }
+  #mp_custom_gallery .thumbnail-item img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+  }
 
   /* delete button */
   .mp-delete-btn{
     position:absolute;top:4px;right:4px;z-index:10;
-    width:24px;height:24px;border-radius:50%;
+    width:var(--mp-delete-size);height:var(--mp-delete-size);border-radius:50%;
     background:rgba(0,0,0,0.7);color:#fff;
     border:none;cursor:pointer;
     display:flex;align-items:center;justify-content:center;
@@ -549,7 +603,7 @@ class Script(scripts.Script):
     /* show container only when at least one image exists */
     #mp_gallery_container:has(img){
       display:block !important;
-      margin-top:8px !important; /* controlled gap when preview appears */
+      margin-top:var(--mp-gap) !important; /* controlled gap when preview appears */
     }
 </style>
 
@@ -593,7 +647,7 @@ class Script(scripts.Script):
 """
             )
 
-            with gr.Row(elem_id="mp_model_bar"):
+            with gr.Row(elem_id="mp_model_bar", elem_classes=["mp-compact-row"]):
                 current_model_choices = get_model_choices()
                 initial_is_lmstudio = normalize_model_choice(DEFAULT_MODEL_CHOICE)[0] == "lmstudio"
                 with gr.Column(scale=1, min_width=260):
@@ -798,7 +852,7 @@ class Script(scripts.Script):
             # ===== Images: toolbar + paste button + drop zone + gallery =====
             images_state = gr.State([])
 
-            with gr.Row(elem_id="mp_upload_bar"):
+            with gr.Row(elem_id="mp_upload_bar", elem_classes=["mp-action-grid"]):
                 paste_btn = gr.Button("Paste from clipboard", elem_id="mp_paste_btn", elem_classes=["mp-rounded-btn"])
                 remove_last_btn = gr.Button("Remove last", elem_classes=["mp-rounded-btn"])
                 clear_btn = gr.Button("Clear all", elem_classes=["mp-rounded-btn"])
@@ -848,7 +902,7 @@ class Script(scripts.Script):
                 if not images:
                     return ""
 
-                html_parts = ['<div class="mp-thumbnails" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;">']
+                html_parts = ['<div class="mp-thumbnails">']
 
                 for idx, img in enumerate(images):
                     # Convert PIL image to base64 for display
@@ -858,13 +912,10 @@ class Script(scripts.Script):
                     data_url = f"data:image/jpeg;base64,{b64}"
 
                     html_parts.append(f'''
-                    <div class="thumbnail-item" style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;">
-                        <img src="{data_url}" style="width:100%;height:100%;object-fit:cover;" />
+                    <div class="thumbnail-item">
+                        <img src="{data_url}" />
                         <button class="mp-delete-btn" 
-                                onclick="(function(idx,btn){{var app=document;try{{app=gradioApp();}}catch(e){{}}var tab=btn.closest('[id*=\\'txt2img\\']')||btn.closest('[id*=\\'img2img\\']');var pipe=tab?tab.querySelector('.mp-delete-pipe-class textarea'):null;if(!pipe){{var all=app.querySelectorAll('.mp-delete-pipe-class textarea');pipe=all[0];}}if(pipe){{pipe.value=idx.toString();pipe.dispatchEvent(new Event('input',{{bubbles:true}}));}}}})({idx},this);return false;"
-                                style="position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.7);color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-size:15px;line-height:1;font-weight:700;font-family:Arial,sans-serif;transition:background 0.2s;"
-                                onmouseover="this.style.background='rgba(220,38,38,0.9)'"
-                                onmouseout="this.style.background='rgba(0,0,0,0.7)'">&times;</button>
+                                onclick="(function(idx,btn){{var app=document;try{{app=gradioApp();}}catch(e){{}}var tab=btn.closest('[id*=\\'txt2img\\']')||btn.closest('[id*=\\'img2img\\']');var pipe=tab?tab.querySelector('.mp-delete-pipe-class textarea'):null;if(!pipe){{var all=app.querySelectorAll('.mp-delete-pipe-class textarea');pipe=all[0];}}if(pipe){{pipe.value=idx.toString();pipe.dispatchEvent(new Event('input',{{bubbles:true}}));}}}})({idx},this);return false;">&times;</button>
                     </div>
                     ''')
 
@@ -963,7 +1014,7 @@ class Script(scripts.Script):
 
             # ===== Model I/O =====
             mistral_output = gr.Textbox(label="Prompt from model", lines=4)
-            with gr.Row():
+            with gr.Row(elem_id="mp_output_actions", elem_classes=["mp-two-column-grid"]):
                 get_prompt_btn = gr.Button("Get Prompt", elem_classes=["mp-rounded-btn"])
                 insert_btn = gr.Button("Insert into Prompt", elem_classes=["mp-rounded-btn"])
 
