@@ -677,7 +677,7 @@ class Script(scripts.Script):
                 if is_lmstudio_choice(model_name):
                     return (
                         gr.update(visible=True),
-                        gr.update(value=auto_unload),
+                        gr.update(value=True),
                     )
                 return (
                     gr.update(visible=False),
