@@ -20,7 +20,7 @@ API_URL = "https://api.mistral.ai/v1/chat/completions"
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 LMSTUDIO_DEFAULT_API_BASE = "http://127.0.0.1:1234/v1"
 MODEL_CHOICES = [
-    "mistral: pixtral-large-latest",
+    "mistral: mistral-large-2512",
     "gemini: gemini-2.5-flash",
     "gemini: gemini-2.5-pro",
 ]

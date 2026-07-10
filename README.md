@@ -1,6 +1,6 @@
 # Mistral + Gemini + LM Studio Prompt Extension
 
-Extension for Forge/Stable Diffusion WebUI that generates prompts from images using Mistral (`pixtral-large-latest`), Gemini (`gemini-2.5-flash`, `gemini-2.5-pro`), or local LM Studio models through its OpenAI-compatible API.
+Extension for Forge/Stable Diffusion WebUI that generates prompts from images using Mistral (`mistral-large-2512`), Gemini (`gemini-2.5-flash`, `gemini-2.5-pro`), or local LM Studio models through its OpenAI-compatible API.
 
 ## What It Does
 
