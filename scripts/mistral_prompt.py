@@ -703,7 +703,7 @@ class Script(scripts.Script):
                         label="", show_label=False,
                     )
                 with gr.Column(scale=1, min_width=260):
-                    edit_btn = gr.Button("Edit", elem_classes=["mp-rounded-btn"])
+                    edit_btn = gr.Button("Edit/Create/Save System Prompt", elem_classes=["mp-rounded-btn"])
 
             # Inline editor
             with gr.Box(visible=False) as preset_editor:
@@ -719,11 +719,11 @@ class Script(scripts.Script):
                 status_md = gr.Markdown(visible=False)
 
             with gr.Row():
-                prompt_text = gr.Textbox(label="Initial prompt", value="Describe the image")
+                prompt_text = gr.Textbox(label="System prompt", value="Describe the image")
 
             with gr.Row(elem_id="mp_improve_prompt_bar"):
                 improve_prompt_enabled = gr.Checkbox(
-                    label="Improve existing prompt",
+                    label="Prompt enhancement mode (use the appropriate system prompt)",
                     value=False,
                     elem_id="mp_improve_prompt_enabled",
                 )
