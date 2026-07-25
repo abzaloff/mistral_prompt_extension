@@ -39,11 +39,7 @@ DEFAULT_PRESETS = {
 def _ensure_presets_in_opts():
     raw = shared.opts.data.get(PRESETS_OPT_KEY, "").strip()
     if not raw:
-        shared.opts.data[PRESETS_OPT_KEY] = json.dumps(DEFAULT_PRESETS, ensure_ascii=False)
-        try:
-            shared.opts.save(shared.config_filename)
-        except Exception:
-            pass
+        set_presets(DEFAULT_PRESETS, merge_defaults=False)
         return
 
     try:
@@ -55,19 +51,11 @@ def _ensure_presets_in_opts():
         return
 
     changed = False
-    for name, text in DEFAULT_PRESETS.items():
-        if name not in data:
-            data[name] = text
-            changed = True
     if data.get("LM Studio LLM") == OLD_LMSTUDIO_LLM_PRESET:
         data["LM Studio LLM"] = LMSTUDIO_LLM_PRESET
         changed = True
     if changed:
-        shared.opts.data[PRESETS_OPT_KEY] = json.dumps(data, ensure_ascii=False)
-        try:
-            shared.opts.save(shared.config_filename)
-        except Exception:
-            pass
+        set_presets(data, merge_defaults=False)
 
 def get_presets():
     _ensure_presets_in_opts()
@@ -78,12 +66,24 @@ def get_presets():
     except Exception:
         return dict(DEFAULT_PRESETS)
 
-def set_presets(presets: dict):
-    shared.opts.data[PRESETS_OPT_KEY] = json.dumps(presets, ensure_ascii=False)
+def set_presets(presets: dict, merge_defaults: bool = False):
+    data = dict(presets or {})
+    if merge_defaults:
+        for name, text in DEFAULT_PRESETS.items():
+            data.setdefault(name, text)
+    value = json.dumps(data, ensure_ascii=False)
     try:
+        if PRESETS_OPT_KEY in shared.opts.data_labels:
+            shared.opts.set(PRESETS_OPT_KEY, value, run_callbacks=False)
+        else:
+            shared.opts.data[PRESETS_OPT_KEY] = value
         shared.opts.save(shared.config_filename)
-    except Exception:
-        pass
+    except Exception as exc:
+        try:
+            shared.opts.data[PRESETS_OPT_KEY] = value
+            shared.opts.save(shared.config_filename)
+        except Exception as fallback_exc:
+            raise RuntimeError(f"Failed to save Mistral presets to config: {fallback_exc}") from fallback_exc
 
 # ========= API backends =========
 
@@ -461,6 +461,102 @@ class Script(scripts.Script):
   #mp_preset_bar .gr-form{margin-bottom:0 !important;}
   #mp_preset_bar .gr-dropdown, #mp_preset_bar .wrap{min-width:240px;}
   #mp_preset_bar .gr-button{white-space:nowrap;width:100% !important;}
+  #mp_system_prompt textarea{
+    max-height:120px !important;
+    overflow-y:auto !important;
+    resize:vertical !important;
+  }
+  #mp_preset_modal{
+    position:fixed !important;
+    inset:0 !important;
+    z-index:2147483000 !important;
+    align-items:center !important;
+    justify-content:center !important;
+    padding:24px !important;
+    background:rgba(0,0,0,.56) !important;
+    border:none !important;
+    box-shadow:none !important;
+    contain:none !important;
+    pointer-events:auto !important;
+    user-select:none !important;
+  }
+  #txt2img_settings:has(#mp_preset_modal:not(.hide)),
+  #txt2img_results:has(#mp_preset_modal:not(.hide)),
+  #img2img_settings:has(#mp_preset_modal:not(.hide)),
+  #img2img_results:has(#mp_preset_modal:not(.hide)){
+    z-index:2147482999 !important;
+  }
+  #mp_preset_modal[style*="display: block"]{display:flex !important;}
+  #mp_preset_modal > .wrap,
+  #mp_preset_modal > div{
+    position:relative !important;
+    z-index:2147483001 !important;
+    width:min(760px, calc(100vw - 48px)) !important;
+  }
+  #mp_preset_modal .block,
+  #mp_preset_modal .gr-box{
+    border-color:var(--block-border-color) !important;
+  }
+  #mp_preset_modal_panel{
+    position:relative !important;
+    z-index:2147483002 !important;
+    width:min(760px, calc(100vw - 48px)) !important;
+    max-height:calc(100vh - 48px) !important;
+    overflow:auto !important;
+    padding:16px !important;
+    border:1px solid var(--block-border-color) !important;
+    border-radius:var(--mp-radius) !important;
+    background:#0b1118 !important;
+    box-shadow:0 18px 55px rgba(0,0,0,.45) !important;
+    isolation:isolate !important;
+  }
+  #mp_preset_modal_panel::before{
+    content:"" !important;
+    position:absolute !important;
+    inset:0 !important;
+    z-index:0 !important;
+    border-radius:var(--mp-radius) !important;
+    background:#0b1118 !important;
+    pointer-events:none !important;
+  }
+  #mp_preset_modal_panel .gr-form,
+  #mp_preset_modal_panel .wrap,
+  #mp_preset_modal_panel input,
+  #mp_preset_modal_panel textarea,
+  #mp_preset_modal_panel select{
+    background:#1f2b38 !important;
+  }
+  #mp_preset_modal_panel label,
+  #mp_preset_modal_panel .block,
+  #mp_preset_modal_panel .gr-box{
+    background:#0b1118 !important;
+  }
+  #mp_preset_modal_panel > .styler{
+    position:relative !important;
+    z-index:1 !important;
+  }
+  #mp_preset_modal_panel textarea,
+  #mp_preset_modal_panel input{
+    user-select:text !important;
+  }
+  #mp_preset_modal_panel h3{margin-top:0 !important;}
+  #mp_preset_modal_actions{
+    display:flex !important;
+    flex-wrap:wrap !important;
+    gap:var(--mp-gap) !important;
+    align-items:center !important;
+  }
+  #mp_preset_modal_actions .gr-button,
+  #mp_preset_modal_actions button{
+    width:auto !important;
+    min-width:72px !important;
+  }
+  #mp_preset_editor_text textarea{
+    min-height:220px !important;
+    max-height:360px !important;
+    overflow-y:auto !important;
+    resize:vertical !important;
+  }
 
   /* upload toolbar: three equal buttons */
   #mp_upload_bar{display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--mp-gap);align-items:stretch;margin-top:var(--mp-gap-tight) !important;}
@@ -642,6 +738,7 @@ class Script(scripts.Script):
 
   let tries = 0;
   const t = setInterval(() => { if (setupDragOnly() || ++tries > 120) clearInterval(t); }, 100);
+
 })();
 </script>
 """
@@ -694,32 +791,59 @@ class Script(scripts.Script):
             presets_state = gr.State(get_presets())
             preset_names = sorted(list(get_presets().keys()))
             editor_visible = gr.State(False)
+            initial_preset_name = preset_names[0] if preset_names else None
+            initial_preset_text = get_presets().get(initial_preset_name, "") if initial_preset_name else ""
 
             with gr.Row(elem_id="mp_preset_bar"):
                 with gr.Column(scale=1, min_width=260):
                     header_presets = gr.Dropdown(
                         choices=preset_names,
-                        value=preset_names[0] if preset_names else None,
+                        value=initial_preset_name,
                         label="", show_label=False,
                     )
                 with gr.Column(scale=1, min_width=260):
-                    edit_btn = gr.Button("Edit/Create/Save System Prompt", elem_classes=["mp-rounded-btn"])
+                    with gr.Row(elem_classes=["mp-two-column-grid"]):
+                        edit_btn = gr.Button("Edit Presets", elem_classes=["mp-rounded-btn"])
+                        refresh_presets_btn = gr.Button("Refresh", elem_classes=["mp-rounded-btn"])
 
-            # Inline editor
-            with gr.Box(visible=False) as preset_editor:
-                gr.Markdown("### Preset Editor")
-                with gr.Row():
-                    editor_select = gr.Dropdown(choices=preset_names, value=preset_names[0] if preset_names else None, label="Select preset")
-                    close_editor = gr.Button("Close", elem_classes=["mp-rounded-btn"])
-                editor_name = gr.Textbox(label="Preset name")
-                editor_text = gr.Textbox(label="Preset text", lines=4)
-                with gr.Row():
-                    save_btn = gr.Button("Save / Update", elem_classes=["mp-rounded-btn"])
-                    delete_btn = gr.Button("Delete", elem_classes=["mp-rounded-btn"])
-                status_md = gr.Markdown(visible=False)
+            # Modal editor
+            with gr.Box(
+                visible=False,
+                elem_id="mp_preset_modal",
+            ) as preset_editor:
+                with gr.Box(
+                    elem_id="mp_preset_modal_panel",
+                ):
+                    gr.Markdown("### Preset Editor")
+                    editor_select = gr.Dropdown(
+                        choices=preset_names,
+                        value=initial_preset_name,
+                        label="Preset",
+                    )
+                    editor_name = gr.Textbox(label="Name", value=initial_preset_name or "")
+                    editor_text = gr.Textbox(
+                        label="Text",
+                        value=initial_preset_text,
+                        lines=8,
+                        elem_id="mp_preset_editor_text",
+                    )
+                    with gr.Row(
+                        elem_id="mp_preset_modal_actions",
+                    ):
+                        new_btn = gr.Button("New", elem_classes=["mp-rounded-btn"])
+                        save_btn = gr.Button("Save", elem_classes=["mp-rounded-btn"])
+                        duplicate_btn = gr.Button("Duplicate", elem_classes=["mp-rounded-btn"])
+                        delete_btn = gr.Button("Delete", elem_classes=["mp-rounded-btn"])
+                        close_editor = gr.Button("Close", elem_classes=["mp-rounded-btn"])
+                    status_md = gr.Markdown(visible=False)
 
             with gr.Row():
-                prompt_text = gr.Textbox(label="System prompt", value="Describe the image")
+                prompt_text = gr.Textbox(
+                    label="System prompt",
+                    value=initial_preset_text or "Describe the image",
+                    lines=5,
+                    elem_id="mp_system_prompt",
+                )
 
             with gr.Row(elem_id="mp_improve_prompt_bar"):
                 improve_prompt_enabled = gr.Checkbox(
@@ -759,13 +883,14 @@ class Script(scripts.Script):
             )
 
             def on_select_apply(name, presets):
+                presets = get_presets()
                 if not name:
                     return gr.update(), "", ""
                 text = presets.get(name, "")
                 return gr.update(value=text), name, text
 
-            hidden_preset_name = gr.Textbox(visible=False)
-            hidden_preset_text = gr.Textbox(visible=False)
+            hidden_preset_name = gr.Textbox(value=initial_preset_name or "", visible=False)
+            hidden_preset_text = gr.Textbox(value=initial_preset_text, visible=False)
 
             header_presets.change(
                 fn=on_select_apply,
@@ -773,28 +898,56 @@ class Script(scripts.Script):
                 outputs=[prompt_text, hidden_preset_name, hidden_preset_text],
             )
 
+            def refresh_presets(curr_name, curr_text, editor_value):
+                presets = get_presets()
+                names = sorted(list(presets.keys()))
+                value = curr_name if curr_name in presets else (names[0] if names else None)
+                text = presets.get(value or "", "")
+                editor_value = editor_value if editor_value in presets else value
+                return (
+                    presets,
+                    gr.update(choices=names, value=value),
+                    gr.update(choices=names, value=editor_value),
+                    gr.update(value=text),
+                    value or "",
+                    text,
+                    gr.update(visible=False, value=""),
+                )
+
+            refresh_presets_btn.click(
+                fn=refresh_presets,
+                inputs=[hidden_preset_name, hidden_preset_text, editor_select],
+                outputs=[presets_state, header_presets, editor_select, prompt_text, hidden_preset_name, hidden_preset_text, status_md],
+                show_progress=False,
+            )
+
             def toggle_editor(vis, curr_name, curr_text, presets):
-                presets = dict(presets)
+                presets = get_presets()
                 names = sorted(list(presets.keys()))
                 opening = not bool(vis)
                 if opening:
-                    if not curr_name and names:
+                    if (not curr_name or curr_name not in presets) and names:
                         curr_name = names[0]
                         curr_text = presets.get(curr_name, "")
+                    elif curr_name in presets:
+                        curr_text = presets.get(curr_name, "")
                     return (
+                        presets,
+                        gr.update(choices=names, value=curr_name),
                         gr.update(visible=True),
                         True,
                         gr.update(choices=names, value=curr_name),
                         gr.update(value=curr_name),
                         gr.update(value=curr_text or presets.get(curr_name, "")),
+                        gr.update(visible=False, value=""),
                     )
                 else:
-                    return (gr.update(visible=False), False, gr.update(), gr.update(), gr.update())
+                    return (presets, gr.update(choices=names), gr.update(visible=False), False, gr.update(), gr.update(), gr.update(), gr.update())
 
             edit_btn.click(
                 fn=toggle_editor,
                 inputs=[editor_visible, hidden_preset_name, hidden_preset_text, presets_state],
-                outputs=[preset_editor, editor_visible, editor_select, editor_name, editor_text],
+                outputs=[presets_state, header_presets, preset_editor, editor_visible, editor_select, editor_name, editor_text, status_md],
             )
             close_editor.click(
                 fn=lambda: (gr.update(visible=False), False),
@@ -802,34 +955,108 @@ class Script(scripts.Script):
                 outputs=[preset_editor, editor_visible],
             )
 
+            def unique_preset_name(presets, base_name):
+                existing = set((presets or {}).keys())
+                base_name = (base_name or "New preset").strip() or "New preset"
+                if base_name not in existing:
+                    return base_name
+                idx = 2
+                while f"{base_name} {idx}" in existing:
+                    idx += 1
+                return f"{base_name} {idx}"
+
+            def new_preset_form(presets):
+                presets = get_presets()
+                name = unique_preset_name(presets, "New preset")
+                return (
+                    gr.update(value=None),
+                    gr.update(value=name),
+                    gr.update(value=""),
+                    gr.update(visible=True, value=f"Enter text and click Save to create '{name}'."),
+                )
+
+            new_btn.click(
+                fn=new_preset_form,
+                inputs=[presets_state],
+                outputs=[editor_select, editor_name, editor_text, status_md],
+            )
+
             def editor_on_select(name, presets):
+                presets = get_presets()
                 txt = (presets or {}).get(name or "", "")
-                return name or "", txt
+                return name or "", txt, gr.update(visible=False, value="")
 
             editor_select.change(
                 fn=editor_on_select,
                 inputs=[editor_select, presets_state],
-                outputs=[editor_name, editor_text],
+                outputs=[editor_name, editor_text, status_md],
             )
 
-            def save_preset(presets, name, text):
+            def save_preset(presets, selected_name, name, text):
+                presets = get_presets()
                 name = (name or "").strip()
                 if not name:
                     names = sorted(list(presets.keys()))
-                    return presets, gr.update(choices=names), gr.update(choices=names), "Preset name is empty.", hidden_preset_name, hidden_preset_text
+                    return (
+                        presets,
+                        gr.update(choices=names),
+                        gr.update(choices=names),
+                        gr.update(),
+                        gr.update(visible=True, value="Preset name is empty."),
+                        gr.update(),
+                        gr.update(),
+                    )
                 new = dict(presets)
+                selected_name = (selected_name or "").strip()
+                if selected_name and selected_name != name and selected_name in new:
+                    del new[selected_name]
                 new[name] = text or ""
                 set_presets(new)
                 names = sorted(list(new.keys()))
-                return new, gr.update(choices=names, value=name), gr.update(choices=names, value=name), f"Preset '{name}' saved.", name, text
+                return (
+                    new,
+                    gr.update(choices=names, value=name),
+                    gr.update(choices=names, value=name),
+                    gr.update(value=text or ""),
+                    gr.update(visible=True, value=f"Preset '{name}' saved."),
+                    name,
+                    text or "",
+                )
 
             save_btn.click(
                 fn=save_preset,
+                inputs=[presets_state, editor_select, editor_name, editor_text],
+                outputs=[presets_state, editor_select, header_presets, prompt_text, status_md, hidden_preset_name, hidden_preset_text],
+            )
+
+            def duplicate_preset(presets, name, text):
+                presets = get_presets()
+                source_name = (name or "").strip() or "Preset"
+                new_name = unique_preset_name(presets, f"{source_name} Copy")
+                new_text = text or presets.get(source_name, "")
+                presets[new_name] = new_text
+                set_presets(presets)
+                names = sorted(list(presets.keys()))
+                return (
+                    presets,
+                    gr.update(choices=names, value=new_name),
+                    gr.update(choices=names, value=new_name),
+                    gr.update(value=new_name),
+                    gr.update(value=new_text),
+                    gr.update(value=new_text),
+                    gr.update(visible=True, value=f"Preset '{new_name}' created."),
+                    new_name,
+                    new_text,
+                )
+
+            duplicate_btn.click(
+                fn=duplicate_preset,
                 inputs=[presets_state, editor_name, editor_text],
-                outputs=[presets_state, editor_select, header_presets, status_md, hidden_preset_name, hidden_preset_text],
+                outputs=[presets_state, editor_select, header_presets, editor_name, editor_text, prompt_text, status_md, hidden_preset_name, hidden_preset_text],
             )
 
             def delete_preset(presets, name, _):
+                presets = get_presets()
                 name = (name or "").strip()
                 new = dict(presets)
                 msg = ""
@@ -841,12 +1068,23 @@ class Script(scripts.Script):
                     msg = f"Preset '{name}' not found."
                 names = sorted(list(new.keys()))
                 new_value = names[0] if names else None
-                return new, gr.update(choices=names, value=new_value), gr.update(choices=names, value=new_value), msg, new_value or "", new.get(new_value or "", "")
+                new_text = new.get(new_value or "", "")
+                return (
+                    new,
+                    gr.update(choices=names, value=new_value),
+                    gr.update(choices=names, value=new_value),
+                    gr.update(value=new_value or ""),
+                    gr.update(value=new_text),
+                    gr.update(value=new_text),
+                    gr.update(visible=True, value=msg),
+                    new_value or "",
+                    new_text,
+                )
 
             delete_btn.click(
                 fn=delete_preset,
                 inputs=[presets_state, editor_name, editor_select],
-                outputs=[presets_state, editor_select, header_presets, status_md, hidden_preset_name, hidden_preset_text],
+                outputs=[presets_state, editor_select, header_presets, editor_name, editor_text, prompt_text, status_md, hidden_preset_name, hidden_preset_text],
             )
 
             # ===== Images: toolbar + paste button + drop zone + gallery =====
@@ -1103,15 +1341,6 @@ def on_ui_settings():
             "Max JPEG size sent to model (KB)",
             section=section
         )
-    )
-
-    shared.opts.add_option(
-        PRESETS_OPT_KEY,
-        shared.OptionInfo(
-            json.dumps(DEFAULT_PRESETS, ensure_ascii=False),
-            "Mistral Presets (JSON)",
-            section=section
-        ),
     )
 
 try:
