@@ -676,7 +676,7 @@ class Script(scripts.Script):
   .mp-delete-btn{
     position:absolute;top:4px;right:4px;z-index:10;
     width:var(--mp-delete-size);height:var(--mp-delete-size);border-radius:50%;
-    background:rgba(0,0,0,0.7);color:#fff;
+    background:rgba(0,0,0,0.75) !important;color:#fff !important;
     border:none;cursor:pointer;
     display:flex;align-items:center;justify-content:center;
     padding:0;
@@ -685,7 +685,7 @@ class Script(scripts.Script):
     font-family:Arial,sans-serif;
     transition:background 0.2s;
   }
-  .mp-delete-btn:hover{background:rgba(220,38,38,0.9);}
+  .mp-delete-btn:hover{background:rgba(220,38,38,0.9) !important;}
   
     /* hide empty gallery container by default */
     #mp_gallery_container{
