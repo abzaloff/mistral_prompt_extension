@@ -3,7 +3,7 @@
 # - Drag&drop / click / "Paste from clipboard" button
 # - Remove last / Clear all / Individual delete buttons
 # - Presets + inline editor
-# - Send to Mistral API + insert into main prompt
+# - Send to a selected vision API + insert into main prompt
 
 import io
 import json
@@ -18,6 +18,9 @@ from modules import scripts, shared, processing
 MAX_IMAGES = 30
 API_URL = "https://api.mistral.ai/v1/chat/completions"
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_VISION_MODEL = "qwen/qwen3.6-27b"
+GROQ_MAX_IMAGES = 3
 LMSTUDIO_DEFAULT_API_BASE = "http://127.0.0.1:1234/v1"
 GEMINI_FREE_TIER_MODELS = [
     "gemini-3.6-flash",
@@ -34,6 +37,7 @@ GEMINI_MODELS_WITHOUT_SAMPLING = {
 }
 MODEL_CHOICES = [
     "mistral: mistral-large-2512",
+    f"groq: {GROQ_VISION_MODEL}",
     *[f"gemini: {model}" for model in GEMINI_FREE_TIER_MODELS],
 ]
 DEFAULT_MODEL_CHOICE = MODEL_CHOICES[0]
@@ -102,6 +106,7 @@ def set_presets(presets: dict, merge_defaults: bool = False):
 # Reuse one HTTP session to persist cookies (helps with Cloudflare checks).
 _mistral_session = None
 _gemini_session = None
+_groq_session = None
 _lmstudio_session = None
 
 def get_mistral_session():
@@ -115,6 +120,12 @@ def get_gemini_session():
     if _gemini_session is None:
         _gemini_session = requests.Session()
     return _gemini_session
+
+def get_groq_session():
+    global _groq_session
+    if _groq_session is None:
+        _groq_session = requests.Session()
+    return _groq_session
 
 def get_lmstudio_session():
     global _lmstudio_session
@@ -224,7 +235,7 @@ def normalize_model_choice(model_choice):
     provider, model = model_choice.split(":", 1)
     provider = provider.strip().lower()
     model = model.strip()
-    if not model or provider not in ("mistral", "gemini", "lmstudio"):
+    if not model or provider not in ("mistral", "gemini", "groq", "lmstudio"):
         return normalize_model_choice(DEFAULT_MODEL_CHOICE)
     return provider, model
 
@@ -349,6 +360,82 @@ def send_to_gemini(model, prompt, images, temperature, maximum_tokens, top_p):
         raise ValueError(f"Gemini returned no text. Finish reason: {finish_reason}")
     raise ValueError("Gemini returned an empty response.")
 
+def send_to_groq(model, prompt, images, temperature, maximum_tokens, top_p):
+    api_key = (shared.opts.data.get("groq_api_key", "") or "").strip()
+    if not api_key:
+        raise ValueError("Groq API key is not set in Settings.")
+
+    if not (prompt or "").strip():
+        raise ValueError("Prompt is empty.")
+
+    if model != GROQ_VISION_MODEL:
+        raise ValueError(f"Unsupported Groq model: {model}")
+
+    if len(images or []) > GROQ_MAX_IMAGES:
+        raise ValueError(
+            f"Groq {GROQ_VISION_MODEL} supports a maximum of "
+            f"{GROQ_MAX_IMAGES} images per request."
+        )
+
+    content_list = [{"type": "text", "text": prompt}]
+    for img in images or []:
+        b64 = encode_image_for_request(img)
+        content_list.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+        })
+
+    data = {
+        "model": model,
+        "messages": [{"role": "user", "content": content_list}],
+        "temperature": float(temperature),
+        "max_completion_tokens": int(maximum_tokens),
+        "top_p": float(top_p),
+        "reasoning_effort": "none",
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    }
+
+    resp = get_groq_session().post(
+        GROQ_API_URL,
+        headers=headers,
+        json=data,
+        timeout=120,
+    )
+    if not resp.ok:
+        try:
+            err = resp.json().get("error", {})
+            message = err.get("message") if isinstance(err, dict) else None
+            message = message or resp.text
+        except Exception:
+            message = resp.text or resp.reason
+        if resp.status_code in (401, 403):
+            raise ValueError(f"Groq authorization failed: {message}")
+        if resp.status_code == 429:
+            raise ValueError(f"Groq rate limit exceeded: {message}")
+        raise ValueError(f"Groq API error {resp.status_code}: {message}")
+
+    payload = resp.json()
+    choices = payload.get("choices") or []
+    if not choices:
+        raise ValueError("Groq returned no choices.")
+    message = choices[0].get("message") or {}
+    content = message.get("content", "")
+    if isinstance(content, list):
+        text = "\n".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and part.get("text")
+        )
+    else:
+        text = str(content or "")
+    if text.strip():
+        return text.strip()
+    raise ValueError("Groq returned an empty response.")
+
 def send_to_lmstudio(model, prompt, images, temperature, maximum_tokens, top_p):
     if not (prompt or "").strip():
         raise ValueError("Prompt is empty.")
@@ -408,6 +495,8 @@ def send_to_selected_model(model_choice, prompt, images, temperature, maximum_to
         return send_to_lmstudio(model, prompt, images, temperature, maximum_tokens, top_p)
     if provider == "gemini":
         return send_to_gemini(model, prompt, images, temperature, maximum_tokens, top_p)
+    if provider == "groq":
+        return send_to_groq(model, prompt, images, temperature, maximum_tokens, top_p)
     return send_to_mistral(model, prompt, images, temperature, maximum_tokens, top_p)
 
 # ========= UI Script =========
@@ -708,6 +797,7 @@ class Script(scripts.Script):
     transition:background 0.2s;
   }
   .mp-delete-btn:hover{background:rgba(220,38,38,0.9) !important;}
+  .mp-delete-pipe-class{display:none !important;}
   
     /* hide empty gallery container by default */
     .mp-gallery-container{
@@ -724,40 +814,6 @@ class Script(scripts.Script):
       margin-top:var(--mp-gap) !important; /* controlled gap when preview appears */
     }
 </style>
-
-<script>
-(function(){
-  function appRoot(){ try{ return window.gradioApp ? gradioApp() : document; }catch(e){ return document; } }
-
-  function setupDrop(drop){
-    if(drop.dataset.mpDragReady === 'true') return;
-    drop.dataset.mpDragReady = 'true';
-
-    const prevent = e => { e.preventDefault(); e.stopPropagation(); };
-    ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { prevent(e); drop.classList.add('dragover'); }));
-    ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { prevent(e); drop.classList.remove('dragover'); }));
-
-    const ensureHeights = () => {
-      const boxes = drop.querySelectorAll('.wrap, .file-wrap, .border, .container');
-      boxes.forEach(b=>{ b.style.height='100%'; b.style.minHeight='100%'; });
-    };
-    ensureHeights();
-    new MutationObserver(ensureHeights).observe(drop, {subtree:true, childList:true, attributes:true});
-  }
-
-  function setupDragOnly(){
-    const app = appRoot();
-    const drops = app.querySelectorAll('.mp-drop');
-    if(!drops.length) return false;
-    drops.forEach(setupDrop);
-    return true;
-  }
-
-  let tries = 0;
-  const t = setInterval(() => { if (setupDragOnly() || ++tries > 120) clearInterval(t); }, 100);
-
-})();
-</script>
 """
             )
 
@@ -772,7 +828,7 @@ class Script(scripts.Script):
                         choices=current_model_choices,
                         value=DEFAULT_MODEL_CHOICE,
                         label="Model",
-                        info="Gemini entries support a limited standard API free tier; quotas depend on account and region.",
+                        info="Gemini and Groq entries have limited free API quotas that depend on the account and region.",
                     )
                 with gr.Column(scale=0, min_width=210, visible=initial_is_lmstudio) as auto_unload_col:
                     auto_unload_lmstudio = gr.Checkbox(
@@ -1191,6 +1247,8 @@ class Script(scripts.Script):
                 elem_classes=["mp-drop"],
             )
 
+            delete_pipe_elem_id = self.elem_id("mp_delete_pipe")
+
             # Custom gallery with delete buttons
             with gr.Box(
                 elem_id=self.elem_id("mp_gallery_container"),
@@ -1204,8 +1262,9 @@ class Script(scripts.Script):
 
             # Hidden textbox for receiving delete index from JS
             delete_index_pipe = gr.Textbox(
-                visible=False,
-                elem_id=self.elem_id("mp_delete_pipe"),
+                visible=True,
+                show_label=False,
+                elem_id=delete_pipe_elem_id,
                 elem_classes=["mp-delete-pipe-class"],
             )
 
@@ -1228,8 +1287,11 @@ class Script(scripts.Script):
                     html_parts.append(f'''
                     <div class="thumbnail-item">
                         <img src="{data_url}" />
-                        <button class="mp-delete-btn" 
-                                onclick="(function(idx,btn){{var root=btn.closest('.mp-extension-root');var pipe=root?root.querySelector('.mp-delete-pipe-class textarea'):null;if(pipe){{pipe.value=idx.toString();pipe.dispatchEvent(new Event('input',{{bubbles:true}}));}}}})({idx},this);return false;">&times;</button>
+                        <button type="button"
+                                class="mp-delete-btn"
+                                data-mp-delete-index="{idx}"
+                                data-mp-delete-pipe-id="{delete_pipe_elem_id}"
+                                aria-label="Remove image">&times;</button>
                     </div>
                     ''')
 
@@ -1402,15 +1464,38 @@ class Script(scripts.Script):
 
 def on_ui_settings():
     section = ("mistral_prompt", "Mistral++")
+    extension_setting_keys = (
+        "mistral_api_key",
+        "GEMINI_API_KEY",
+        "groq_api_key",
+        "lmstudio_api_base",
+        "lmstudio_api_key",
+        "mistral_image_max_size",
+        "mistral_image_max_kb",
+    )
 
     shared.opts.add_option(
         "mistral_api_key",
-        shared.OptionInfo("", "Mistral API Key", section=section)
+        shared.OptionInfo("", "Mistral API Key", section=section).html(
+            "[<a href='https://admin.mistral.ai/organization/api-keys' "
+            "target='_blank'>Get API key</a>]"
+        )
     )
 
     shared.opts.add_option(
         "GEMINI_API_KEY",
-        shared.OptionInfo("", "Gemini API Key", section=section)
+        shared.OptionInfo("", "Gemini API Key", section=section).html(
+            "[<a href='https://aistudio.google.com/api-keys' "
+            "target='_blank'>Get API key</a>]"
+        )
+    )
+
+    shared.opts.add_option(
+        "groq_api_key",
+        shared.OptionInfo("", "Groq API Key", section=section).html(
+            "[<a href='https://console.groq.com/keys' "
+            "target='_blank'>Get API key</a>]"
+        )
     )
 
     shared.opts.add_option(
@@ -1444,6 +1529,16 @@ def on_ui_settings():
             section=section
         )
     )
+
+    # Reassigning an existing dict key does not change its position. This matters
+    # after extension reloads, where a newly introduced option would otherwise be
+    # appended below all previously registered settings.
+    registered = {}
+    for key in extension_setting_keys:
+        info = shared.opts.data_labels.pop(key, None)
+        if info is not None:
+            registered[key] = info
+    shared.opts.data_labels.update(registered)
 
 try:
     from modules import script_callbacks
