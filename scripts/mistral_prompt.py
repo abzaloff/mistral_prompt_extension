@@ -19,10 +19,22 @@ MAX_IMAGES = 30
 API_URL = "https://api.mistral.ai/v1/chat/completions"
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 LMSTUDIO_DEFAULT_API_BASE = "http://127.0.0.1:1234/v1"
+GEMINI_FREE_TIER_MODELS = [
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+]
+GEMINI_MODELS_WITHOUT_SAMPLING = {
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+}
 MODEL_CHOICES = [
     "mistral: mistral-large-2512",
-    "gemini: gemini-2.5-flash",
-    "gemini: gemini-2.5-pro",
+    *[f"gemini: {model}" for model in GEMINI_FREE_TIER_MODELS],
 ]
 DEFAULT_MODEL_CHOICE = MODEL_CHOICES[0]
 
@@ -282,13 +294,18 @@ def send_to_gemini(model, prompt, images, temperature, maximum_tokens, top_p):
         })
     parts.append({"text": prompt})
 
+    generation_config = {
+        "maxOutputTokens": int(maximum_tokens),
+    }
+    if model not in GEMINI_MODELS_WITHOUT_SAMPLING:
+        generation_config.update({
+            "temperature": float(temperature),
+            "topP": float(top_p),
+        })
+
     data = {
         "contents": [{"role": "user", "parts": parts}],
-        "generationConfig": {
-            "temperature": float(temperature),
-            "maxOutputTokens": int(maximum_tokens),
-            "topP": float(top_p),
-        },
+        "generationConfig": generation_config,
     }
     headers = {
         "Content-Type": "application/json",
@@ -405,7 +422,12 @@ class Script(scripts.Script):
     def ui(self, is_img2img):
         _ensure_presets_in_opts()
 
-        with gr.Accordion("Mistral++", open=False):
+        with gr.Accordion(
+            "Mistral++",
+            open=False,
+            elem_id=self.elem_id("mp_root"),
+            elem_classes=["mp-extension-root"],
+        ):
 
             # ===== CSS + JS: dropzone visuals + delete buttons =====
             gr.HTML(
@@ -444,9 +466,9 @@ class Script(scripts.Script):
   .mp-two-column-grid .gr-button,
   .mp-action-grid button,
   .mp-two-column-grid button,
-  #mp_refresh_lmstudio_models,
-  #mp_refresh_lmstudio_models.gr-button,
-  #mp_refresh_lmstudio_models button{
+  .mp-refresh-lmstudio-models,
+  .mp-refresh-lmstudio-models.gr-button,
+  .mp-refresh-lmstudio-models button{
     min-height:var(--mp-control-height) !important;
   }
   .mp-rounded-btn,
@@ -456,17 +478,17 @@ class Script(scripts.Script):
   }
 
   /* presets */
-  #mp_preset_bar{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--mp-gap);align-items:flex-end;}
-  #mp_preset_bar label{display:none !important;}
-  #mp_preset_bar .gr-form{margin-bottom:0 !important;}
-  #mp_preset_bar .gr-dropdown, #mp_preset_bar .wrap{min-width:240px;}
-  #mp_preset_bar .gr-button{white-space:nowrap;width:100% !important;}
-  #mp_system_prompt textarea{
+  .mp-preset-bar{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--mp-gap);align-items:flex-end;}
+  .mp-preset-bar label{display:none !important;}
+  .mp-preset-bar .gr-form{margin-bottom:0 !important;}
+  .mp-preset-bar .gr-dropdown, .mp-preset-bar .wrap{min-width:240px;}
+  .mp-preset-bar .gr-button{white-space:nowrap;width:100% !important;}
+  .mp-system-prompt textarea{
     max-height:120px !important;
     overflow-y:auto !important;
     resize:vertical !important;
   }
-  #mp_preset_modal{
+  .mp-preset-modal{
     position:fixed !important;
     inset:0 !important;
     z-index:2147483000 !important;
@@ -480,24 +502,24 @@ class Script(scripts.Script):
     pointer-events:auto !important;
     user-select:none !important;
   }
-  #txt2img_settings:has(#mp_preset_modal:not(.hide)),
-  #txt2img_results:has(#mp_preset_modal:not(.hide)),
-  #img2img_settings:has(#mp_preset_modal:not(.hide)),
-  #img2img_results:has(#mp_preset_modal:not(.hide)){
+  #txt2img_settings:has(.mp-preset-modal:not(.hide)),
+  #txt2img_results:has(.mp-preset-modal:not(.hide)),
+  #img2img_settings:has(.mp-preset-modal:not(.hide)),
+  #img2img_results:has(.mp-preset-modal:not(.hide)){
     z-index:2147482999 !important;
   }
-  #mp_preset_modal[style*="display: block"]{display:flex !important;}
-  #mp_preset_modal > .wrap,
-  #mp_preset_modal > div{
+  .mp-preset-modal[style*="display: block"]{display:flex !important;}
+  .mp-preset-modal > .wrap,
+  .mp-preset-modal > div{
     position:relative !important;
     z-index:2147483001 !important;
     width:min(760px, calc(100vw - 48px)) !important;
   }
-  #mp_preset_modal .block,
-  #mp_preset_modal .gr-box{
+  .mp-preset-modal .block,
+  .mp-preset-modal .gr-box{
     border-color:var(--block-border-color) !important;
   }
-  #mp_preset_modal_panel{
+  .mp-preset-modal-panel{
     position:relative !important;
     z-index:2147483002 !important;
     width:min(760px, calc(100vw - 48px)) !important;
@@ -510,7 +532,7 @@ class Script(scripts.Script):
     box-shadow:0 18px 55px rgba(0,0,0,.45) !important;
     isolation:isolate !important;
   }
-  #mp_preset_modal_panel::before{
+  .mp-preset-modal-panel::before{
     content:"" !important;
     position:absolute !important;
     inset:0 !important;
@@ -519,39 +541,39 @@ class Script(scripts.Script):
     background:#0b1118 !important;
     pointer-events:none !important;
   }
-  #mp_preset_modal_panel .gr-form,
-  #mp_preset_modal_panel .wrap,
-  #mp_preset_modal_panel input,
-  #mp_preset_modal_panel textarea,
-  #mp_preset_modal_panel select{
+  .mp-preset-modal-panel .gr-form,
+  .mp-preset-modal-panel .wrap,
+  .mp-preset-modal-panel input,
+  .mp-preset-modal-panel textarea,
+  .mp-preset-modal-panel select{
     background:#1f2b38 !important;
   }
-  #mp_preset_modal_panel label,
-  #mp_preset_modal_panel .block,
-  #mp_preset_modal_panel .gr-box{
+  .mp-preset-modal-panel label,
+  .mp-preset-modal-panel .block,
+  .mp-preset-modal-panel .gr-box{
     background:#0b1118 !important;
   }
-  #mp_preset_modal_panel > .styler{
+  .mp-preset-modal-panel > .styler{
     position:relative !important;
     z-index:1 !important;
   }
-  #mp_preset_modal_panel textarea,
-  #mp_preset_modal_panel input{
+  .mp-preset-modal-panel textarea,
+  .mp-preset-modal-panel input{
     user-select:text !important;
   }
-  #mp_preset_modal_panel h3{margin-top:0 !important;}
-  #mp_preset_modal_actions{
+  .mp-preset-modal-panel h3{margin-top:0 !important;}
+  .mp-preset-modal-actions{
     display:flex !important;
     flex-wrap:wrap !important;
     gap:var(--mp-gap) !important;
     align-items:center !important;
   }
-  #mp_preset_modal_actions .gr-button,
-  #mp_preset_modal_actions button{
+  .mp-preset-modal-actions .gr-button,
+  .mp-preset-modal-actions button{
     width:auto !important;
     min-width:72px !important;
   }
-  #mp_preset_editor_text textarea{
+  .mp-preset-editor-text textarea{
     min-height:220px !important;
     max-height:360px !important;
     overflow-y:auto !important;
@@ -559,42 +581,42 @@ class Script(scripts.Script):
   }
 
   /* upload toolbar: three equal buttons */
-  #mp_upload_bar{display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--mp-gap);align-items:stretch;margin-top:var(--mp-gap-tight) !important;}
-  #mp_upload_bar .gr-button{width:100%}
+  .mp-upload-bar{display:grid !important;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--mp-gap);align-items:stretch;margin-top:var(--mp-gap-tight) !important;}
+  .mp-upload-bar .gr-button{width:100%}
 
   /* output actions */
-  #mp_output_actions{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--mp-gap);align-items:stretch;}
-  #mp_output_actions .gr-button{width:100% !important;min-height:var(--mp-control-height) !important;}
+  .mp-output-actions{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--mp-gap);align-items:stretch;}
+  .mp-output-actions .gr-button{width:100% !important;min-height:var(--mp-control-height) !important;}
 
   /* keep LM Studio controls aligned as one compact row */
-  #mp_model_bar{gap:var(--mp-gap) !important;align-items:flex-end !important;}
-  #mp_model_bar .gr-form{min-width:0 !important;}
-  #mp_model_bar .gr-button{width:100% !important;}
-  #mp_refresh_lmstudio_models,
-  #mp_refresh_lmstudio_models.gr-button,
-  #mp_refresh_lmstudio_models button{
+  .mp-model-bar{gap:var(--mp-gap) !important;align-items:flex-end !important;}
+  .mp-model-bar .gr-form{min-width:0 !important;}
+  .mp-model-bar .gr-button{width:100% !important;}
+  .mp-refresh-lmstudio-models,
+  .mp-refresh-lmstudio-models.gr-button,
+  .mp-refresh-lmstudio-models button{
     height:var(--mp-control-height) !important;
     min-height:var(--mp-control-height) !important;
     padding-top:0 !important;
     padding-bottom:0 !important;
   }
-  #mp_lmstudio_auto_unload,
-  #mp_lmstudio_auto_unload.gr-checkbox,
-  #mp_lmstudio_auto_unload label{
+  .mp-lmstudio-auto-unload,
+  .mp-lmstudio-auto-unload.gr-checkbox,
+  .mp-lmstudio-auto-unload label{
     min-height:var(--mp-control-height) !important;
     align-items:center !important;
   }
-  #mp_lmstudio_auto_unload{min-width:190px;}
-  #mp_improve_prompt_bar{margin-top:var(--mp-gap-tight) !important;margin-bottom:var(--mp-gap-tight) !important;}
-  #mp_improve_prompt_enabled{min-height:24px !important;}
+  .mp-lmstudio-auto-unload{min-width:190px;}
+  .mp-improve-prompt-bar{margin-top:var(--mp-gap-tight) !important;margin-bottom:var(--mp-gap-tight) !important;}
+  .mp-improve-prompt-enabled{min-height:24px !important;}
 
   /* fixed-height drop zone to avoid layout jumps while uploading */
-  #mp_drop{position:relative;isolation:isolate;margin-top:var(--mp-gap) !important;margin-bottom:0;min-height:84px !important;height:84px !important;overflow:hidden;}
+  .mp-drop{position:relative;isolation:isolate;margin-top:var(--mp-gap) !important;margin-bottom:0;min-height:84px !important;height:84px !important;overflow:hidden;}
 
-  #mp_drop .wrap,
-  #mp_drop .file-wrap,
-  #mp_drop .border,
-  #mp_drop .container{
+  .mp-drop .wrap,
+  .mp-drop .file-wrap,
+  .mp-drop .border,
+  .mp-drop .container{
     height:100% !important;
     min-height:100% !important;
     padding:0 !important;
@@ -603,10 +625,10 @@ class Script(scripts.Script):
   }
 
   /* keep upload status/progress visible */
-  #mp_drop [class*="status"],
-  #mp_drop [class*="progress"],
-  #mp_drop [data-testid*="status"],
-  #mp_drop [data-testid*="progress"]{
+  .mp-drop [class*="status"],
+  .mp-drop [class*="progress"],
+  .mp-drop [data-testid*="status"],
+  .mp-drop [data-testid*="progress"]{
       position:absolute;
       bottom:6px;
       right:10px;
@@ -617,17 +639,17 @@ class Script(scripts.Script):
   }
 
   /* hide default Gradio hints in gr.File without breaking click handling */
-  #mp_drop label,
-  #mp_drop .label,
-  #mp_drop .upload-text,
-  #mp_drop .filetype,
-  #mp_drop p,
-  #mp_drop span{
+  .mp-drop label,
+  .mp-drop .label,
+  .mp-drop .upload-text,
+  .mp-drop .filetype,
+  .mp-drop p,
+  .mp-drop span{
     opacity:0 !important;
   }
 
   /* custom drop-zone label shown as an overlay */
-  #mp_drop::after{
+  .mp-drop::after{
       content:"Drag images here or click to select, or use the \\"Paste from clipboard\\" button";
       position:absolute;
       inset:0;
@@ -645,8 +667,8 @@ class Script(scripts.Script):
       pointer-events:none;
       z-index:5; /* keep overlay above default Gradio text */
   }
-  #mp_drop.dragover::after,
-  #mp_drop.border_focus::after{
+  .mp-drop.dragover::after,
+  .mp-drop.border_focus::after{
       content:"Drop to add images";
       border-color:#F87215 !important;
       box-shadow:none !important;
@@ -654,19 +676,19 @@ class Script(scripts.Script):
   }
 
   /* gallery with delete buttons */
-  #mp_gallery_container{position:relative;margin-top:var(--mp-gap);}
-  #mp_custom_gallery .mp-thumbnails{
+  .mp-gallery-container{position:relative;margin-top:var(--mp-gap);}
+  .mp-custom-gallery .mp-thumbnails{
     display:grid;
     grid-template-columns:repeat(auto-fill,minmax(var(--mp-thumb-size),1fr));
     gap:var(--mp-gap);
   }
-  #mp_custom_gallery .thumbnail-item{
+  .mp-custom-gallery .thumbnail-item{
     position:relative;
     aspect-ratio:1;
     border-radius:var(--mp-radius);
     overflow:hidden;
   }
-  #mp_custom_gallery .thumbnail-item img{
+  .mp-custom-gallery .thumbnail-item img{
     width:100%;
     height:100%;
     object-fit:cover;
@@ -688,7 +710,7 @@ class Script(scripts.Script):
   .mp-delete-btn:hover{background:rgba(220,38,38,0.9) !important;}
   
     /* hide empty gallery container by default */
-    #mp_gallery_container{
+    .mp-gallery-container{
       display:none !important;
       margin:0 !important;
       padding:0 !important;
@@ -697,7 +719,7 @@ class Script(scripts.Script):
     }
 
     /* show container only when at least one image exists */
-    #mp_gallery_container:has(img){
+    .mp-gallery-container:has(img){
       display:block !important;
       margin-top:var(--mp-gap) !important; /* controlled gap when preview appears */
     }
@@ -707,20 +729,9 @@ class Script(scripts.Script):
 (function(){
   function appRoot(){ try{ return window.gradioApp ? gradioApp() : document; }catch(e){ return document; } }
 
-  // Global helper to delete an image by index.
-  window.deleteMPImage = function(idx) {
-    const app = appRoot();
-    const pipe = app.querySelector('#mp_delete_pipe textarea');
-    if (pipe) {
-      pipe.value = idx.toString();
-      pipe.dispatchEvent(new Event('input', {bubbles: true}));
-    }
-  };
-
-  function setupDragOnly(){
-    const app = appRoot();
-    const drop = app.querySelector('#mp_drop');
-    if(!drop) return false;
+  function setupDrop(drop){
+    if(drop.dataset.mpDragReady === 'true') return;
+    drop.dataset.mpDragReady = 'true';
 
     const prevent = e => { e.preventDefault(); e.stopPropagation(); };
     ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { prevent(e); drop.classList.add('dragover'); }));
@@ -732,7 +743,13 @@ class Script(scripts.Script):
     };
     ensureHeights();
     new MutationObserver(ensureHeights).observe(drop, {subtree:true, childList:true, attributes:true});
+  }
 
+  function setupDragOnly(){
+    const app = appRoot();
+    const drops = app.querySelectorAll('.mp-drop');
+    if(!drops.length) return false;
+    drops.forEach(setupDrop);
     return true;
   }
 
@@ -744,7 +761,10 @@ class Script(scripts.Script):
 """
             )
 
-            with gr.Row(elem_id="mp_model_bar", elem_classes=["mp-compact-row"]):
+            with gr.Row(
+                elem_id=self.elem_id("mp_model_bar"),
+                elem_classes=["mp-compact-row", "mp-model-bar"],
+            ):
                 current_model_choices = get_model_choices()
                 initial_is_lmstudio = normalize_model_choice(DEFAULT_MODEL_CHOICE)[0] == "lmstudio"
                 with gr.Column(scale=1, min_width=260):
@@ -752,18 +772,20 @@ class Script(scripts.Script):
                         choices=current_model_choices,
                         value=DEFAULT_MODEL_CHOICE,
                         label="Model",
+                        info="Gemini entries support a limited standard API free tier; quotas depend on account and region.",
                     )
                 with gr.Column(scale=0, min_width=210, visible=initial_is_lmstudio) as auto_unload_col:
                     auto_unload_lmstudio = gr.Checkbox(
                         label="Auto-unload LM model",
                         value=False,
-                        elem_id="mp_lmstudio_auto_unload",
+                        elem_id=self.elem_id("mp_lmstudio_auto_unload"),
+                        elem_classes=["mp-lmstudio-auto-unload"],
                     )
                 with gr.Column(scale=1, min_width=260):
                     refresh_lmstudio_models_btn = gr.Button(
                         "Refresh LM Studio models",
-                        elem_id="mp_refresh_lmstudio_models",
-                        elem_classes=["mp-rounded-btn"],
+                        elem_id=self.elem_id("mp_refresh_lmstudio_models"),
+                        elem_classes=["mp-rounded-btn", "mp-refresh-lmstudio-models"],
                     )
 
             def is_lmstudio_choice(model_name):
@@ -782,7 +804,21 @@ class Script(scripts.Script):
                 )
 
             def refresh_lmstudio_models(current_choice, auto_unload):
-                choices = get_model_choices(lmstudio_timeout=5)
+                try:
+                    lmstudio_choices = fetch_lmstudio_model_choices(timeout=5)
+                except Exception as exc:
+                    choices = list(MODEL_CHOICES)
+                    if current_choice and current_choice not in choices:
+                        choices.append(current_choice)
+                    message = f"Could not refresh LM Studio models: {exc}"
+                    if hasattr(gr, "Warning"):
+                        gr.Warning(message)
+                    return (
+                        gr.update(choices=choices, value=current_choice or DEFAULT_MODEL_CHOICE),
+                        *update_lmstudio_options_visibility(current_choice, auto_unload),
+                    )
+
+                choices = [*MODEL_CHOICES, *lmstudio_choices]
                 value = current_choice if current_choice in choices else DEFAULT_MODEL_CHOICE
                 auto_col_update, auto_update = update_lmstudio_options_visibility(value, auto_unload)
                 return gr.update(choices=choices, value=value), auto_col_update, auto_update
@@ -794,7 +830,10 @@ class Script(scripts.Script):
             initial_preset_name = preset_names[0] if preset_names else None
             initial_preset_text = get_presets().get(initial_preset_name, "") if initial_preset_name else ""
 
-            with gr.Row(elem_id="mp_preset_bar"):
+            with gr.Row(
+                elem_id=self.elem_id("mp_preset_bar"),
+                elem_classes=["mp-preset-bar"],
+            ):
                 with gr.Column(scale=1, min_width=260):
                     header_presets = gr.Dropdown(
                         choices=preset_names,
@@ -809,10 +848,12 @@ class Script(scripts.Script):
             # Modal editor
             with gr.Box(
                 visible=False,
-                elem_id="mp_preset_modal",
+                elem_id=self.elem_id("mp_preset_modal"),
+                elem_classes=["mp-preset-modal"],
             ) as preset_editor:
                 with gr.Box(
-                    elem_id="mp_preset_modal_panel",
+                    elem_id=self.elem_id("mp_preset_modal_panel"),
+                    elem_classes=["mp-preset-modal-panel"],
                 ):
                     gr.Markdown("### Preset Editor")
                     editor_select = gr.Dropdown(
@@ -825,10 +866,12 @@ class Script(scripts.Script):
                         label="Text",
                         value=initial_preset_text,
                         lines=8,
-                        elem_id="mp_preset_editor_text",
+                        elem_id=self.elem_id("mp_preset_editor_text"),
+                        elem_classes=["mp-preset-editor-text"],
                     )
                     with gr.Row(
-                        elem_id="mp_preset_modal_actions",
+                        elem_id=self.elem_id("mp_preset_modal_actions"),
+                        elem_classes=["mp-preset-modal-actions"],
                     ):
                         new_btn = gr.Button("New", elem_classes=["mp-rounded-btn"])
                         save_btn = gr.Button("Save", elem_classes=["mp-rounded-btn"])
@@ -842,14 +885,19 @@ class Script(scripts.Script):
                     label="System prompt",
                     value=initial_preset_text or "Describe the image",
                     lines=5,
-                    elem_id="mp_system_prompt",
+                    elem_id=self.elem_id("mp_system_prompt"),
+                    elem_classes=["mp-system-prompt"],
                 )
 
-            with gr.Row(elem_id="mp_improve_prompt_bar"):
+            with gr.Row(
+                elem_id=self.elem_id("mp_improve_prompt_bar"),
+                elem_classes=["mp-improve-prompt-bar"],
+            ):
                 improve_prompt_enabled = gr.Checkbox(
                     label="Prompt enhancement mode (use the appropriate system prompt)",
                     value=False,
-                    elem_id="mp_improve_prompt_enabled",
+                    elem_id=self.elem_id("mp_improve_prompt_enabled"),
+                    elem_classes=["mp-improve-prompt-enabled"],
                 )
 
             with gr.Row(visible=False) as improve_prompt_row:
@@ -1090,12 +1138,22 @@ class Script(scripts.Script):
             # ===== Images: toolbar + paste button + drop zone + gallery =====
             images_state = gr.State([])
 
-            with gr.Row(elem_id="mp_upload_bar", elem_classes=["mp-action-grid"]):
-                paste_btn = gr.Button("Paste from clipboard", elem_id="mp_paste_btn", elem_classes=["mp-rounded-btn"])
+            with gr.Row(
+                elem_id=self.elem_id("mp_upload_bar"),
+                elem_classes=["mp-action-grid", "mp-upload-bar"],
+            ):
+                paste_btn = gr.Button(
+                    "Paste from clipboard",
+                    elem_id=self.elem_id("mp_paste_btn"),
+                    elem_classes=["mp-rounded-btn"],
+                )
                 remove_last_btn = gr.Button("Remove last", elem_classes=["mp-rounded-btn"])
                 clear_btn = gr.Button("Clear all", elem_classes=["mp-rounded-btn"])
 
-            paste_pipe = gr.Textbox(visible=False, elem_id="mp_paste_pipe")
+            paste_pipe = gr.Textbox(
+                visible=False,
+                elem_id=self.elem_id("mp_paste_pipe"),
+            )
 
             paste_btn.click(
                 fn=None,
@@ -1124,14 +1182,32 @@ class Script(scripts.Script):
                 """,
             )
 
-            drop_zone = gr.File(label="", show_label=False, file_types=["image"], file_count="multiple", elem_id="mp_drop")
+            drop_zone = gr.File(
+                label="",
+                show_label=False,
+                file_types=["image"],
+                file_count="multiple",
+                elem_id=self.elem_id("mp_drop"),
+                elem_classes=["mp-drop"],
+            )
 
             # Custom gallery with delete buttons
-            with gr.Box(elem_id="mp_gallery_container"):
-                gallery_html = gr.HTML(value="", elem_id="mp_custom_gallery")
+            with gr.Box(
+                elem_id=self.elem_id("mp_gallery_container"),
+                elem_classes=["mp-gallery-container"],
+            ):
+                gallery_html = gr.HTML(
+                    value="",
+                    elem_id=self.elem_id("mp_custom_gallery"),
+                    elem_classes=["mp-custom-gallery"],
+                )
 
             # Hidden textbox for receiving delete index from JS
-            delete_index_pipe = gr.Textbox(visible=False, elem_id="mp_delete_pipe", elem_classes="mp-delete-pipe-class")
+            delete_index_pipe = gr.Textbox(
+                visible=False,
+                elem_id=self.elem_id("mp_delete_pipe"),
+                elem_classes=["mp-delete-pipe-class"],
+            )
 
             # Also keep invisible standard gallery for compatibility
             gallery_compat = gr.Gallery(visible=False)
@@ -1153,7 +1229,7 @@ class Script(scripts.Script):
                     <div class="thumbnail-item">
                         <img src="{data_url}" />
                         <button class="mp-delete-btn" 
-                                onclick="(function(idx,btn){{var app=document;try{{app=gradioApp();}}catch(e){{}}var tab=btn.closest('[id*=\\'txt2img\\']')||btn.closest('[id*=\\'img2img\\']');var pipe=tab?tab.querySelector('.mp-delete-pipe-class textarea'):null;if(!pipe){{var all=app.querySelectorAll('.mp-delete-pipe-class textarea');pipe=all[0];}}if(pipe){{pipe.value=idx.toString();pipe.dispatchEvent(new Event('input',{{bubbles:true}}));}}}})({idx},this);return false;">&times;</button>
+                                onclick="(function(idx,btn){{var root=btn.closest('.mp-extension-root');var pipe=root?root.querySelector('.mp-delete-pipe-class textarea'):null;if(pipe){{pipe.value=idx.toString();pipe.dispatchEvent(new Event('input',{{bubbles:true}}));}}}})({idx},this);return false;">&times;</button>
                     </div>
                     ''')
 
@@ -1249,10 +1325,36 @@ class Script(scripts.Script):
                 temperature = gr.Slider(0.0, 1.5, value=0.7, step=0.1, label="Temperature")
                 max_tokens = gr.Slider(1, 32768, value=4096, step=1, label="Max tokens")
                 top_p = gr.Slider(0.0, 1.0, value=1.0, step=0.1, label="Top P")
+            sampling_notice = gr.Markdown(
+                "Temperature and Top P are not supported by this Gemini model and will not be sent.",
+                visible=False,
+            )
+
+            def update_sampling_controls(model_name):
+                provider, model = normalize_model_choice(model_name)
+                supported = not (
+                    provider == "gemini"
+                    and model in GEMINI_MODELS_WITHOUT_SAMPLING
+                )
+                return (
+                    gr.update(interactive=supported),
+                    gr.update(interactive=supported),
+                    gr.update(visible=not supported),
+                )
+
+            model_choice.change(
+                fn=update_sampling_controls,
+                inputs=[model_choice],
+                outputs=[temperature, top_p, sampling_notice],
+                show_progress=False,
+            )
 
             # ===== Model I/O =====
             mistral_output = gr.Textbox(label="Prompt from model", lines=4)
-            with gr.Row(elem_id="mp_output_actions", elem_classes=["mp-two-column-grid"]):
+            with gr.Row(
+                elem_id=self.elem_id("mp_output_actions"),
+                elem_classes=["mp-two-column-grid", "mp-output-actions"],
+            ):
                 get_prompt_btn = gr.Button("Get Prompt", elem_classes=["mp-rounded-btn"])
                 insert_btn = gr.Button("Insert into Prompt", elem_classes=["mp-rounded-btn"])
 
