@@ -572,7 +572,57 @@ class Script(scripts.Script):
   .mp-preset-bar .gr-form{margin-bottom:0 !important;}
   .mp-preset-bar .gr-dropdown, .mp-preset-bar .wrap{min-width:240px;}
   .mp-preset-bar .gr-button{white-space:nowrap;width:100% !important;}
+  .mp-system-prompt-header{
+    display:flex !important;
+    flex-wrap:nowrap !important;
+    gap:18px !important;
+    align-items:center !important;
+    margin-top:var(--mp-gap-tight) !important;
+    margin-bottom:4px !important;
+  }
+  .mp-system-prompt-header > *{
+    flex:0 0 auto !important;
+    width:auto !important;
+    min-width:0 !important;
+  }
+  .mp-system-prompt-title{
+    flex:0 0 auto !important;
+    width:auto !important;
+    min-width:0 !important;
+    margin:0 !important;
+    padding:0 !important;
+    border:none !important;
+    background:transparent !important;
+  }
+  .mp-system-prompt-title .wrap{
+    display:flex !important;
+    align-items:center !important;
+    height:auto !important;
+  }
+  .mp-system-prompt-title span{
+    color:var(--block-title-text-color) !important;
+    font-size:var(--block-title-text-size) !important;
+    font-weight:var(--block-title-text-weight) !important;
+    line-height:var(--line-md) !important;
+    position:relative;
+    top:-1px;
+  }
+  .mp-system-prompt-header .mp-improve-prompt-enabled{
+    flex:0 0 auto !important;
+    width:auto !important;
+    min-width:0 !important;
+    min-height:24px !important;
+    margin:0 !important;
+  }
+  .mp-system-prompt-header .mp-improve-prompt-enabled label{
+    margin:0 !important;
+  }
+  .mp-system-prompt-row{
+    gap:var(--mp-gap) !important;
+    align-items:stretch !important;
+  }
   .mp-system-prompt textarea{
+    min-height:120px !important;
     max-height:120px !important;
     overflow-y:auto !important;
     resize:vertical !important;
@@ -696,9 +746,6 @@ class Script(scripts.Script):
     align-items:center !important;
   }
   .mp-lmstudio-auto-unload{min-width:190px;}
-  .mp-improve-prompt-bar{margin-top:var(--mp-gap-tight) !important;margin-bottom:var(--mp-gap-tight) !important;}
-  .mp-improve-prompt-enabled{min-height:24px !important;}
-
   /* fixed-height drop zone to avoid layout jumps while uploading */
   .mp-drop{position:relative;isolation:isolate;margin-top:var(--mp-gap) !important;margin-bottom:0;min-height:84px !important;height:84px !important;overflow:hidden;}
 
@@ -936,19 +983,15 @@ class Script(scripts.Script):
                         close_editor = gr.Button("Close", elem_classes=["mp-rounded-btn"])
                     status_md = gr.Markdown(visible=False)
 
-            with gr.Row():
-                prompt_text = gr.Textbox(
-                    label="System prompt",
-                    value=initial_preset_text or "Describe the image",
-                    lines=5,
-                    elem_id=self.elem_id("mp_system_prompt"),
-                    elem_classes=["mp-system-prompt"],
-                )
-
             with gr.Row(
-                elem_id=self.elem_id("mp_improve_prompt_bar"),
-                elem_classes=["mp-improve-prompt-bar"],
+                elem_id=self.elem_id("mp_system_prompt_header"),
+                elem_classes=["mp-system-prompt-header"],
+                equal_height=False,
             ):
+                gr.HTML(
+                    "<span>System prompt</span>",
+                    elem_classes=["mp-system-prompt-title"],
+                )
                 improve_prompt_enabled = gr.Checkbox(
                     label="Prompt enhancement mode (use the appropriate system prompt)",
                     value=False,
@@ -956,22 +999,39 @@ class Script(scripts.Script):
                     elem_classes=["mp-improve-prompt-enabled"],
                 )
 
-            with gr.Row(visible=False) as improve_prompt_row:
+            with gr.Row(
+                elem_id=self.elem_id("mp_system_prompt_row"),
+                elem_classes=["mp-system-prompt-row"],
+            ):
+                prompt_text = gr.Textbox(
+                    label="System prompt",
+                    show_label=False,
+                    value=initial_preset_text or "Describe the image",
+                    lines=5,
+                    scale=1,
+                    elem_id=self.elem_id("mp_system_prompt"),
+                    elem_classes=["mp-system-prompt"],
+                )
                 source_prompt_text = gr.Textbox(
                     label="Prompt to improve",
                     placeholder="Paste the prompt you want the selected model to improve",
-                    lines=3,
+                    show_label=False,
+                    lines=5,
+                    scale=1,
+                    visible=False,
+                    elem_id=self.elem_id("mp_source_prompt"),
+                    elem_classes=["mp-system-prompt", "mp-source-prompt"],
                 )
 
             def toggle_improve_prompt(enabled):
                 if enabled:
-                    return gr.update(visible=True), gr.update()
-                return gr.update(visible=False), gr.update(value="")
+                    return gr.update(visible=True)
+                return gr.update(visible=False, value="")
 
             improve_prompt_enabled.change(
                 fn=toggle_improve_prompt,
                 inputs=[improve_prompt_enabled],
-                outputs=[improve_prompt_row, source_prompt_text],
+                outputs=[source_prompt_text],
             )
 
             model_choice.change(
