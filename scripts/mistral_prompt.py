@@ -566,12 +566,22 @@ class Script(scripts.Script):
     border-radius:var(--mp-radius) !important;
   }
 
-  /* presets */
-  .mp-preset-bar{display:grid !important;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--mp-gap);align-items:flex-end;}
+  /* model and preset controls share the same responsive two-column layout */
+  .mp-primary-control-row{
+    gap:var(--mp-gap) !important;
+    align-items:flex-end !important;
+  }
+  .mp-primary-control-row > *{
+    min-width:0;
+  }
+  .mp-preset-bar{align-items:flex-end !important;}
   .mp-preset-bar label{display:none !important;}
   .mp-preset-bar .gr-form{margin-bottom:0 !important;}
-  .mp-preset-bar .gr-dropdown, .mp-preset-bar .wrap{min-width:240px;}
   .mp-preset-bar .gr-button{white-space:nowrap;width:100% !important;}
+  .mp-preset-actions{
+    width:100% !important;
+    gap:var(--mp-gap) !important;
+  }
   .mp-system-prompt-header{
     display:flex !important;
     flex-wrap:nowrap !important;
@@ -728,7 +738,7 @@ class Script(scripts.Script):
   .mp-output-actions .gr-button{width:100% !important;min-height:var(--mp-control-height) !important;}
 
   /* keep LM Studio controls aligned as one compact row */
-  .mp-model-bar{gap:var(--mp-gap) !important;align-items:flex-end !important;}
+  .mp-model-bar{align-items:flex-end !important;}
   .mp-model-bar .gr-form{min-width:0 !important;}
   .mp-model-bar .gr-button{width:100% !important;}
   .mp-refresh-lmstudio-models,
@@ -866,7 +876,7 @@ class Script(scripts.Script):
 
             with gr.Row(
                 elem_id=self.elem_id("mp_model_bar"),
-                elem_classes=["mp-compact-row", "mp-model-bar"],
+                elem_classes=["mp-compact-row", "mp-primary-control-row", "mp-model-bar"],
             ):
                 current_model_choices = get_model_choices()
                 initial_is_lmstudio = normalize_model_choice(DEFAULT_MODEL_CHOICE)[0] == "lmstudio"
@@ -935,7 +945,7 @@ class Script(scripts.Script):
 
             with gr.Row(
                 elem_id=self.elem_id("mp_preset_bar"),
-                elem_classes=["mp-preset-bar"],
+                elem_classes=["mp-compact-row", "mp-primary-control-row", "mp-preset-bar"],
             ):
                 with gr.Column(scale=1, min_width=260):
                     header_presets = gr.Dropdown(
@@ -944,7 +954,7 @@ class Script(scripts.Script):
                         label="", show_label=False,
                     )
                 with gr.Column(scale=1, min_width=260):
-                    with gr.Row(elem_classes=["mp-two-column-grid"]):
+                    with gr.Row(elem_classes=["mp-two-column-grid", "mp-preset-actions"]):
                         edit_btn = gr.Button("Edit Presets", elem_classes=["mp-rounded-btn"])
                         refresh_presets_btn = gr.Button("Refresh", elem_classes=["mp-rounded-btn"])
 
