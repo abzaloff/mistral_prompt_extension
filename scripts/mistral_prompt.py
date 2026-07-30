@@ -584,7 +584,7 @@ class Script(scripts.Script):
   }
   .mp-system-prompt-header{
     display:flex !important;
-    flex-wrap:nowrap !important;
+    flex-wrap:wrap !important;
     gap:18px !important;
     align-items:center !important;
     margin-top:var(--mp-gap-tight) !important;
@@ -618,14 +618,53 @@ class Script(scripts.Script):
     top:-1px;
   }
   .mp-system-prompt-header .mp-improve-prompt-enabled{
-    flex:0 0 auto !important;
+    flex:0 1 auto !important;
     width:auto !important;
+    max-width:100% !important;
     min-width:0 !important;
     min-height:24px !important;
     margin:0 !important;
   }
   .mp-system-prompt-header .mp-improve-prompt-enabled label{
+    width:100% !important;
+    max-width:100% !important;
     margin:0 !important;
+    white-space:normal !important;
+    overflow-wrap:anywhere !important;
+  }
+  .mp-system-prompt-header .mp-improve-prompt-enabled label > span{
+    flex:1 1 0 !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    white-space:normal !important;
+    overflow-wrap:anywhere !important;
+    word-break:break-word !important;
+  }
+  .mp-system-prompt-header .mp-improve-prompt-enabled input{
+    flex:0 0 auto;
+  }
+  @media (max-width:640px){
+    .mp-system-prompt-header{
+      display:grid !important;
+      grid-template-columns:minmax(0,1fr) !important;
+      column-gap:0 !important;
+      row-gap:4px !important;
+    }
+    .mp-system-prompt-header > *{
+      width:100% !important;
+      max-width:100% !important;
+      min-width:0 !important;
+    }
+    .mp-system-prompt-header .mp-improve-prompt-enabled{
+      width:100% !important;
+      max-width:100% !important;
+      min-width:0 !important;
+    }
+    .mp-system-prompt-header .mp-improve-prompt-enabled label{
+      width:100% !important;
+      max-width:100% !important;
+      min-width:0 !important;
+    }
   }
   .mp-system-prompt-row{
     gap:var(--mp-gap) !important;
