@@ -676,6 +676,10 @@ class Script(scripts.Script):
     overflow-y:auto !important;
     resize:vertical !important;
   }
+  .mp-model-output textarea{
+    max-height:120px !important;
+    overflow-y:auto !important;
+  }
   .mp-preset-modal{
     position:fixed !important;
     inset:0 !important;
@@ -1521,7 +1525,12 @@ class Script(scripts.Script):
             )
 
             # ===== Model I/O =====
-            mistral_output = gr.Textbox(label="Prompt from model", lines=4)
+            mistral_output = gr.Textbox(
+                label="Prompt from model",
+                lines=4,
+                elem_id=self.elem_id("mp_model_output"),
+                elem_classes=["mp-model-output"],
+            )
             with gr.Row(
                 elem_id=self.elem_id("mp_output_actions"),
                 elem_classes=["mp-two-column-grid", "mp-output-actions"],
