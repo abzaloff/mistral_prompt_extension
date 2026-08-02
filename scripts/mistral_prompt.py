@@ -13,7 +13,8 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from PIL import Image
 
 import gradio as gr
-from modules import scripts, shared, processing
+from modules import scripts, shared, processing, sd_models, timer
+from modules.ui_components import ToolButton
 
 MAX_IMAGES = 30
 API_URL = "https://api.mistral.ai/v1/chat/completions"
@@ -188,6 +189,12 @@ def unload_lmstudio_model(model, timeout=10):
             message = resp.text or resp.reason
         raise ValueError(f"LM Studio unload error {resp.status_code}: {message}")
     return resp.json()
+
+def unload_forge_models():
+    t = timer.Timer()
+    sd_models.unload_model_weights()
+    t.record("unload all models")
+    print(f"Unloaded all models and cleared RAM/VRAM in {t.total:.1f}s")
 
 def get_model_choices(include_lmstudio=True, lmstudio_timeout=1.5):
     choices = list(MODEL_CHOICES)
@@ -784,6 +791,23 @@ class Script(scripts.Script):
   .mp-model-bar{align-items:flex-end !important;}
   .mp-model-bar .gr-form{min-width:0 !important;}
   .mp-model-bar .gr-button{width:100% !important;}
+  .mp-lmstudio-memory-controls{
+    flex-wrap:nowrap !important;
+    gap:var(--mp-gap) !important;
+    align-items:center !important;
+  }
+  .mp-vram-cleaner-btn,
+  .mp-vram-cleaner-btn.gr-button,
+  .mp-vram-cleaner-btn button{
+    flex:0 0 var(--mp-control-height) !important;
+    width:var(--mp-control-height) !important;
+    height:var(--mp-control-height) !important;
+    min-width:var(--mp-control-height) !important;
+    min-height:var(--mp-control-height) !important;
+    padding:0 !important;
+    font-size:1rem !important;
+    line-height:1 !important;
+  }
   .mp-refresh-lmstudio-models,
   .mp-refresh-lmstudio-models.gr-button,
   .mp-refresh-lmstudio-models button{
@@ -930,19 +954,32 @@ class Script(scripts.Script):
                         label="Model",
                         info="Gemini and Groq entries have limited free API quotas that depend on the account and region.",
                     )
-                with gr.Column(scale=0, min_width=210, visible=initial_is_lmstudio) as auto_unload_col:
-                    auto_unload_lmstudio = gr.Checkbox(
-                        label="Auto-unload LM model",
-                        value=False,
-                        elem_id=self.elem_id("mp_lmstudio_auto_unload"),
-                        elem_classes=["mp-lmstudio-auto-unload"],
-                    )
+                with gr.Column(scale=0, min_width=240, visible=initial_is_lmstudio) as auto_unload_col:
+                    with gr.Row(elem_classes=["mp-lmstudio-memory-controls"]):
+                        unload_forge_models_btn = ToolButton(
+                            value="\U0001f9f9",
+                            tooltip="Unload all models and clear RAM/VRAM",
+                            elem_id=self.elem_id("mp_unload_all_models"),
+                            elem_classes=["mp-vram-cleaner-btn"],
+                        )
+                        auto_unload_lmstudio = gr.Checkbox(
+                            label="Auto-unload LM model",
+                            value=False,
+                            elem_id=self.elem_id("mp_lmstudio_auto_unload"),
+                            elem_classes=["mp-lmstudio-auto-unload"],
+                        )
                 with gr.Column(scale=1, min_width=260):
                     refresh_lmstudio_models_btn = gr.Button(
                         "Refresh LM Studio models",
                         elem_id=self.elem_id("mp_refresh_lmstudio_models"),
                         elem_classes=["mp-rounded-btn", "mp-refresh-lmstudio-models"],
                     )
+
+            unload_forge_models_btn.click(
+                fn=unload_forge_models,
+                inputs=[],
+                outputs=[],
+            )
 
             def is_lmstudio_choice(model_name):
                 provider, _ = normalize_model_choice(model_name)
