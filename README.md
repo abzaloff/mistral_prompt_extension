@@ -1,6 +1,6 @@
 # Mistral + Gemini + Groq + LM Studio Prompt Extension
 
-Extension for Forge/Stable Diffusion WebUI that generates prompts from images using Mistral (`mistral-large-2512`), current Gemini Flash/Flash-Lite/Pro models, Groq (`qwen/qwen3.6-27b`), or local LM Studio models through its OpenAI-compatible API.
+Extension for Forge/Stable Diffusion WebUI that generates prompts from images using current Mistral Large, Medium, Small, and Ministral 14B models, current Gemini Flash/Flash-Lite/Pro models, Groq (`qwen/qwen3.6-27b`), or local LM Studio models through its OpenAI-compatible API.
 
 ## What It Does
 
@@ -61,6 +61,7 @@ Extension for Forge/Stable Diffusion WebUI that generates prompts from images us
 - Maximum number of images per request is limited in code (`MAX_IMAGES = 30`).
 - Images are automatically downscaled/compressed before upload according to settings.
 - If API key is missing, the extension returns an explicit error in output.
+- Mistral choices: `mistral-large-2512`, `mistral-medium-latest`, `mistral-small-latest`, and `ministral-14b-latest`. Model access depends on the subscription tier of the Mistral organization associated with the API key.
 - Gemini choices: `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-2.5-pro`, `gemini-2.5-flash`, and `gemini-2.5-flash-lite`.
 - Groq choice: `qwen/qwen3.6-27b`. Requests use non-thinking mode and support up to 3 images per request.
 - LM Studio models are loaded from `/v1/models` and requests are sent to `/v1/chat/completions`.

@@ -38,6 +38,9 @@ GEMINI_MODELS_WITHOUT_SAMPLING = {
 }
 MODEL_CHOICES = [
     "mistral: mistral-large-2512",
+    "mistral: mistral-medium-latest",
+    "mistral: mistral-small-latest",
+    "mistral: ministral-14b-latest",
     f"groq: {GROQ_VISION_MODEL}",
     *[f"gemini: {model}" for model in GEMINI_FREE_TIER_MODELS],
 ]
