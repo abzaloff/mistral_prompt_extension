@@ -20,7 +20,7 @@ MAX_IMAGES = 30
 API_URL = "https://api.mistral.ai/v1/chat/completions"
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_VISION_MODEL = "qwen/qwen3.6-27b"
+GROQ_VISION_MODEL = "qwen/qwen3.8-27b"
 GROQ_MAX_IMAGES = 3
 LMSTUDIO_DEFAULT_API_BASE = "http://127.0.0.1:1234/v1"
 GEMINI_FREE_TIER_MODELS = [
@@ -40,6 +40,8 @@ MODEL_CHOICES = [
     "mistral: mistral-large-2512",
     "mistral: mistral-medium-latest",
     "mistral: mistral-small-latest",
+    "mistral: ministral-3b-latest",
+    "mistral: ministral-8b-latest",
     "mistral: ministral-14b-latest",
     f"groq: {GROQ_VISION_MODEL}",
     *[f"gemini: {model}" for model in GEMINI_FREE_TIER_MODELS],
