@@ -22,6 +22,8 @@ GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_VISION_MODEL = "qwen/qwen3.8-27b"
 GROQ_MAX_IMAGES = 3
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODEL = "stealth/union-alpha"
 LMSTUDIO_DEFAULT_API_BASE = "http://127.0.0.1:1234/v1"
 GEMINI_FREE_TIER_MODELS = [
     "gemini-3.6-flash",
@@ -45,6 +47,7 @@ MODEL_CHOICES = [
     "mistral: ministral-14b-latest",
     f"groq: {GROQ_VISION_MODEL}",
     *[f"gemini: {model}" for model in GEMINI_FREE_TIER_MODELS],
+    f"openrouter: {OPENROUTER_MODEL}",
 ]
 DEFAULT_MODEL_CHOICE = MODEL_CHOICES[0]
 
@@ -247,7 +250,7 @@ def normalize_model_choice(model_choice):
     provider, model = model_choice.split(":", 1)
     provider = provider.strip().lower()
     model = model.strip()
-    if not model or provider not in ("mistral", "gemini", "groq", "lmstudio"):
+    if not model or provider not in ("mistral", "gemini", "groq", "lmstudio", "openrouter"):
         return normalize_model_choice(DEFAULT_MODEL_CHOICE)
     return provider, model
 
@@ -448,6 +451,59 @@ def send_to_groq(model, prompt, images, temperature, maximum_tokens, top_p):
         return text.strip()
     raise ValueError("Groq returned an empty response.")
 
+def send_to_openrouter(model, prompt, images, temperature, maximum_tokens, top_p):
+    api_key = (shared.opts.data.get("openrouter_api_key", "") or "").strip()
+    if not api_key:
+        raise ValueError("OpenRouter API key is not set in Settings.")
+    if model != OPENROUTER_MODEL:
+        raise ValueError(f"Unsupported OpenRouter model: {model}")
+    if not (prompt or "").strip():
+        raise ValueError("Prompt is empty.")
+    if len(images or []) > MAX_IMAGES:
+        raise ValueError(f"Maximum {MAX_IMAGES} images supported.")
+
+    content = [{"type": "text", "text": prompt}]
+    for img in images or []:
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{encode_image_for_request(img)}"},
+        })
+    resp = requests.post(
+        OPENROUTER_API_URL,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": content}],
+            "temperature": float(temperature),
+            "max_tokens": int(maximum_tokens),
+            "top_p": float(top_p),
+        },
+        timeout=120,
+    )
+    if not resp.ok:
+        try:
+            error = resp.json().get("error", {})
+            message = error.get("message") if isinstance(error, dict) else None
+            message = message or resp.reason
+        except Exception:
+            message = resp.reason
+        raise ValueError(f"OpenRouter API error {resp.status_code}: {message}")
+    payload = resp.json()
+    if payload.get("error"):
+        raise ValueError(f"OpenRouter API error: {payload['error']}")
+    choices = payload.get("choices") or []
+    if not choices:
+        raise ValueError("OpenRouter returned no choices.")
+    content = (choices[0].get("message") or {}).get("content")
+    if isinstance(content, list):
+        text = "\n".join(part.get("text", "") for part in content if isinstance(part, dict) and part.get("text"))
+    else:
+        text = str(content or "")
+    if text.strip():
+        return text.strip()
+    raise ValueError("OpenRouter returned an empty response.")
+
+
 def send_to_lmstudio(model, prompt, images, temperature, maximum_tokens, top_p):
     if not (prompt or "").strip():
         raise ValueError("Prompt is empty.")
@@ -503,6 +559,8 @@ def send_to_lmstudio(model, prompt, images, temperature, maximum_tokens, top_p):
 
 def send_to_selected_model(model_choice, prompt, images, temperature, maximum_tokens, top_p):
     provider, model = normalize_model_choice(model_choice)
+    if provider == "openrouter":
+        return send_to_openrouter(model, prompt, images, temperature, maximum_tokens, top_p)
     if provider == "lmstudio":
         return send_to_lmstudio(model, prompt, images, temperature, maximum_tokens, top_p)
     if provider == "gemini":
@@ -1628,6 +1686,7 @@ def on_ui_settings():
         "mistral_api_key",
         "GEMINI_API_KEY",
         "groq_api_key",
+        "openrouter_api_key",
         "lmstudio_api_base",
         "lmstudio_api_key",
         "mistral_image_max_size",
@@ -1655,6 +1714,14 @@ def on_ui_settings():
         shared.OptionInfo("", "Groq API Key", section=section).html(
             "[<a href='https://console.groq.com/keys' "
             "target='_blank'>Get API key</a>]"
+        )
+    )
+
+    shared.opts.add_option(
+        "openrouter_api_key",
+        shared.OptionInfo("", "OpenRouter API Key", section=section).html(
+            "[<a href='https://openrouter.ai/settings/keys' target='_blank'>Get API key</a>] "
+            "Union Alpha is a free preview; the provider may retain prompts and responses."
         )
     )
 

@@ -9,6 +9,7 @@ Extension for Forge/Stable Diffusion WebUI that generates prompts from images us
 - Shows a custom preview gallery with per-image delete, remove-last, and clear-all actions
 - Sends text and optional images plus your prompt template to the selected model
 - Supports Mistral, Gemini, Groq, and LM Studio model selection from the same UI
+- Also supports Union Alpha (`stealth/union-alpha`) through OpenRouter; the default model is unchanged.
 - Can refresh LM Studio models from the local server without restarting WebUI
 - Can send a reusable instruction plus a separate source prompt for local text-model prompt improvement
 - Lets you append extra text to the generated prompt
@@ -27,6 +28,7 @@ Extension for Forge/Stable Diffusion WebUI that generates prompts from images us
 - **Groq API key is required for the Groq model**
 - Groq free-tier availability and quotas depend on your GroqCloud account. The included `qwen/qwen3.8-27b` model is currently a preview model.
 - **LM Studio must be running with its local server enabled for LM Studio models**
+- **OpenRouter API key is required for Union Alpha**. This is a free preview from an anonymous provider; availability and quotas may change. The provider may retain prompts and responses, but states they are not used for training.
 
 ## Setup
 
@@ -37,6 +39,7 @@ Extension for Forge/Stable Diffusion WebUI that generates prompts from images us
    - `Mistral API Key` (required)
    - `Gemini API Key` (required for Gemini models)
    - `Groq API Key` (required for the Groq model)
+   - `OpenRouter API Key` (required for Union Alpha; get one at https://openrouter.ai/settings/keys)
    - `LM Studio API Base` (default: `http://127.0.0.1:1234/v1`)
    - `LM Studio API Key` (optional, only if your local server requires one)
    - Optional image limits:
@@ -64,6 +67,7 @@ Extension for Forge/Stable Diffusion WebUI that generates prompts from images us
 - Mistral choices: `mistral-large-2512`, `mistral-medium-latest`, `mistral-small-latest`, `ministral-3b-latest`, `ministral-8b-latest`, and `ministral-14b-latest`. Model access depends on the subscription tier of the Mistral organization associated with the API key.
 - Gemini choices: `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-2.5-pro`, `gemini-2.5-flash`, and `gemini-2.5-flash-lite`.
 - Groq choice: `qwen/qwen3.8-27b`. Requests use non-thinking mode and support up to 3 images per request.
+- OpenRouter choice: `stealth/union-alpha` (Union Alpha), supporting text and image input through `/api/v1/chat/completions`.
 - LM Studio models are loaded from `/v1/models` and requests are sent to `/v1/chat/completions`.
 - Image support depends on the selected LM Studio model. Text-only local models may reject image input.
 - `Prompt to improve` is appended to the selected preset/instruction before the request is sent.
