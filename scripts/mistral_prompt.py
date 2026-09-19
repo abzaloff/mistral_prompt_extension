@@ -23,7 +23,10 @@ GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_VISION_MODEL = "qwen/qwen3.8-27b"
 GROQ_MAX_IMAGES = 3
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = "stealth/union-alpha"
+OPENROUTER_MODELS = [
+    "inclusionai/ling-3.0-flash-vl:free",
+    "google/gemma-4-31b-it:free",
+]
 LMSTUDIO_DEFAULT_API_BASE = "http://127.0.0.1:1234/v1"
 GEMINI_FREE_TIER_MODELS = [
     "gemini-3.6-flash",
@@ -47,7 +50,7 @@ MODEL_CHOICES = [
     "mistral: ministral-14b-latest",
     f"groq: {GROQ_VISION_MODEL}",
     *[f"gemini: {model}" for model in GEMINI_FREE_TIER_MODELS],
-    f"openrouter: {OPENROUTER_MODEL}",
+    *[f"openrouter: {model}" for model in OPENROUTER_MODELS],
 ]
 DEFAULT_MODEL_CHOICE = MODEL_CHOICES[0]
 
@@ -455,7 +458,7 @@ def send_to_openrouter(model, prompt, images, temperature, maximum_tokens, top_p
     api_key = (shared.opts.data.get("openrouter_api_key", "") or "").strip()
     if not api_key:
         raise ValueError("OpenRouter API key is not set in Settings.")
-    if model != OPENROUTER_MODEL:
+    if model not in OPENROUTER_MODELS:
         raise ValueError(f"Unsupported OpenRouter model: {model}")
     if not (prompt or "").strip():
         raise ValueError("Prompt is empty.")
@@ -1721,7 +1724,7 @@ def on_ui_settings():
         "openrouter_api_key",
         shared.OptionInfo("", "OpenRouter API Key", section=section).html(
             "[<a href='https://openrouter.ai/settings/keys' target='_blank'>Get API key</a>] "
-            "Union Alpha is a free preview; the provider may retain prompts and responses."
+            "Free-model availability and quotas are controlled by OpenRouter."
         )
     )
 
