@@ -15,6 +15,7 @@ from PIL import Image
 import gradio as gr
 from modules import scripts, shared, processing, sd_models, timer
 from modules.ui_components import ToolButton
+from mistral_current_encoder import generate_current_prompt
 
 MAX_IMAGES = 30
 API_URL = "https://api.mistral.ai/v1/chat/completions"
@@ -43,6 +44,7 @@ GEMINI_MODELS_WITHOUT_SAMPLING = {
 }
 MODEL_CHOICES = [
     "mistral: mistral-large-2512",
+    "Current model text encoder",
     "mistral: mistral-medium-latest",
     "mistral: mistral-small-latest",
     "mistral: ministral-3b-latest",
@@ -247,6 +249,8 @@ def encode_image_for_request(img):
 
 def normalize_model_choice(model_choice):
     model_choice = (model_choice or DEFAULT_MODEL_CHOICE).strip()
+    if model_choice == "Current model text encoder":
+        return "current", "text encoder"
     if ":" not in model_choice:
         model_choice = DEFAULT_MODEL_CHOICE
 
@@ -562,6 +566,8 @@ def send_to_lmstudio(model, prompt, images, temperature, maximum_tokens, top_p):
 
 def send_to_selected_model(model_choice, prompt, images, temperature, maximum_tokens, top_p):
     provider, model = normalize_model_choice(model_choice)
+    if provider == "current":
+        return generate_current_prompt(prompt, images, temperature, maximum_tokens, top_p)
     if provider == "openrouter":
         return send_to_openrouter(model, prompt, images, temperature, maximum_tokens, top_p)
     if provider == "lmstudio":

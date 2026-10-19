@@ -8,7 +8,7 @@ Extension for Forge/Stable Diffusion WebUI that generates prompts from images us
 - Supports direct paste from clipboard
 - Shows a custom preview gallery with per-image delete, remove-last, and clear-all actions
 - Sends text and optional images plus your prompt template to the selected model
-- Supports Mistral, Gemini, Groq, OpenRouter, and LM Studio model selection from the same UI
+- Supports Mistral, Gemini, Groq, OpenRouter, LM Studio, and the current Forge model's text encoder from the same UI
 - Can refresh LM Studio models from the local server without restarting WebUI
 - Can send a reusable instruction plus a separate source prompt for local text-model prompt improvement
 - Lets you append extra text to the generated prompt
@@ -54,6 +54,7 @@ Extension for Forge/Stable Diffusion WebUI that generates prompts from images us
 4. Optionally paste an existing prompt into `Prompt to improve`.
 5. Choose a model.
    - If LM Studio was started after WebUI, click `Refresh LM Studio models`.
+   - Choose `Current model text encoder` to generate locally with the selected Qwen 3VL 4B or 8B encoder.
 6. Adjust sampling options (`Temperature`, `Max tokens`, `Top P`) if needed.
 7. Click `Get Prompt`.
 8. Click `Insert into Prompt` to send text into the main prompt field.
@@ -70,6 +71,7 @@ Extension for Forge/Stable Diffusion WebUI that generates prompts from images us
 - LM Studio models are loaded from `/v1/models` and requests are sent to `/v1/chat/completions`.
 - Image support depends on the selected LM Studio model. Text-only local models may reject image input.
 - `Prompt to improve` is appended to the selected preset/instruction before the request is sent.
+- `Current model text encoder` supports Qwen 3VL 4B (Krea 2) and Qwen 3VL 8B (Qwen Image 2.1), including optional image input. It loads the selected Forge model if needed, then uses its existing text encoder weights without contacting an API or LM Studio. Other encoders return a clear error. Forge may still move the encoder between CPU and GPU according to its memory settings.
 
 ## License
 
