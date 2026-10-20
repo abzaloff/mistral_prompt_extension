@@ -43,8 +43,8 @@ GEMINI_MODELS_WITHOUT_SAMPLING = {
     "gemini-3.5-flash-lite",
 }
 MODEL_CHOICES = [
-    "mistral: mistral-large-2512",
     "Current model text encoder",
+    "mistral: mistral-large-2512",
     "mistral: mistral-medium-latest",
     "mistral: mistral-small-latest",
     "mistral: ministral-3b-latest",
@@ -54,7 +54,7 @@ MODEL_CHOICES = [
     *[f"gemini: {model}" for model in GEMINI_FREE_TIER_MODELS],
     *[f"openrouter: {model}" for model in OPENROUTER_MODELS],
 ]
-DEFAULT_MODEL_CHOICE = MODEL_CHOICES[0]
+DEFAULT_MODEL_CHOICE = "Current model text encoder"
 
 # ========= Presets =========
 PRESETS_OPT_KEY = "mistral_presets_json"
