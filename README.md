@@ -56,8 +56,9 @@ Extension for Forge/Stable Diffusion WebUI that generates prompts from images us
    - If LM Studio was started after WebUI, click `Refresh LM Studio models`.
    - Choose `Current model text encoder` to generate locally with the selected Qwen 3VL 4B or 8B encoder.
 6. Adjust sampling options (`Temperature`, `Max tokens`, `Top P`) if needed.
-7. Click `Get Prompt`.
-8. Click `Insert into Prompt` to send text into the main prompt field.
+7. Optionally enable `Quick mode` to send the result to the current tab's prompt field and start image generation automatically.
+8. Click `Get Prompt`.
+9. With Quick mode off, click `Insert into Prompt` to copy the result to the main prompt field.
 
 ## Notes
 

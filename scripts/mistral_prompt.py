@@ -1646,6 +1646,12 @@ class Script(scripts.Script):
             ):
                 get_prompt_btn = gr.Button("Get Prompt", elem_classes=["mp-rounded-btn"])
                 insert_btn = gr.Button("Insert into Prompt", elem_classes=["mp-rounded-btn"])
+            quick_mode = gr.Checkbox(
+                label="Quick mode",
+                info="Sends the generated prompt directly to image generation.",
+                value=False,
+                elem_id=self.elem_id("mp_quick_mode"),
+            )
 
             def fetch_prompt(model_name, auto_unload, images, init_prompt, source_prompt, append, temp, max_toks, t_p):
                 try:
@@ -1666,21 +1672,24 @@ class Script(scripts.Script):
                 except Exception as e:
                     return f"Error: {e}"
 
+            tab = "img2img" if is_img2img else "txt2img"
             get_prompt_btn.click(
                 fn=fetch_prompt,
                 inputs=[model_choice, auto_unload_lmstudio, images_state, prompt_text, source_prompt_text, append_text, temperature, max_tokens, top_p],
                 outputs=[mistral_output],
+            ).then(
+                fn=None,
+                inputs=[mistral_output, quick_mode],
+                outputs=[mistral_output],
+                _js=f"(p, enabled) => window.mistralPromptQuickGenerate(p, enabled, '{tab}')",
             )
 
-            if is_img2img:
-                insert_js = """
-                (p) => { const app = gradioApp?.(); const ta = app?.querySelector('#img2img_prompt textarea') || app?.querySelector('[data-testid="img2img_prompt"] textarea'); if (ta){ ta.value=p||''; ta.dispatchEvent(new Event('input',{bubbles:true})); ta.dispatchEvent(new Event('change',{bubbles:true})); ta.focus(); } return p; }
-                """
-            else:
-                insert_js = """
-                (p) => { const app = gradioApp?.(); const ta = app?.querySelector('#txt2img_prompt textarea') || app?.querySelector('[data-testid="txt2img_prompt"] textarea'); if (ta){ ta.value=p||''; ta.dispatchEvent(new Event('input',{bubbles:true})); ta.dispatchEvent(new Event('change',{bubbles:true})); ta.focus(); } return p; }
-                """
-            insert_btn.click(fn=None, inputs=[mistral_output], outputs=[mistral_output], _js=insert_js)
+            insert_btn.click(
+                fn=None,
+                inputs=[mistral_output],
+                outputs=[mistral_output],
+                _js=f"(p) => window.mistralPromptInsert(p, '{tab}')",
+            )
 
         return [mistral_output]
 

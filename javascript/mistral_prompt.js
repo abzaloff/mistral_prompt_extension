@@ -23,6 +23,37 @@
         field.dispatchEvent(new Event("input", {bubbles: true}));
     }
 
+    function insertPrompt(prompt, tab, generate) {
+        const app = appRoot();
+        const field = app.querySelector(`#${tab}_prompt textarea`);
+        if (!field) {
+            console.warn(`Mistral++: ${tab} prompt field was not found.`);
+            return prompt;
+        }
+
+        setGradioValue(field, prompt || "");
+        field.dispatchEvent(new Event("change", {bubbles: true}));
+        field.focus();
+
+        if (generate) {
+            const button = app.querySelector(`#${tab}_generate`);
+            if (!button || button.disabled) {
+                console.warn(`Mistral++: ${tab} Generate button is unavailable.`);
+                return prompt;
+            }
+            requestAnimationFrame(() => requestAnimationFrame(() => button.click()));
+        }
+        return prompt;
+    }
+
+    window.mistralPromptInsert = (prompt, tab) => insertPrompt(prompt, tab, false);
+    window.mistralPromptQuickGenerate = (prompt, enabled, tab) => {
+        if (!enabled || typeof prompt !== "string" || !prompt.trim() || /^Error:\s/.test(prompt)) {
+            return prompt;
+        }
+        return insertPrompt(prompt, tab, true);
+    };
+
     function handleGalleryDelete(event) {
         const target = event.target;
         const button = target instanceof Element
