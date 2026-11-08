@@ -163,7 +163,7 @@ class CurrentEncoderTests(unittest.TestCase):
         class FakeModel:
             forge_objects = type("Objects", (), {"clip": type("Clip", (), {"cond_stage_model": object()})()})()
 
-        with self.assertRaisesRegex(ValueError, "Qwen 3VL 4B and 8B"):
+        with self.assertRaisesRegex(ValueError, "Qwen 3VL 4B/8B and Qwen3.5 9B"):
             current_encoder.get_qwen3vl(FakeModel())
 
     def test_cached_decode_matches_forge_full_forward(self):
@@ -257,6 +257,49 @@ class CurrentEncoderTests(unittest.TestCase):
             core, embeddings[:, 3:], torch.tensor([[5]]), cache,
         )
         torch.testing.assert_close(actual[:, -1], expected, rtol=1e-4, atol=1e-4)
+
+    def test_qwen35_cached_decode_matches_forge_full_forward(self):
+        forge_root = Path(__file__).resolve().parents[3]
+        sys.path[:0] = [str(forge_root), str(forge_root / "modules_forge" / "packages")]
+        from dataclasses import replace
+        from backend.nn.llm.llama import Qwen35_9BConfig, Qwen35Transformer
+        from backend.operations import using_forge_operations
+        import mistral_qwen35
+
+        config = replace(
+            Qwen35_9BConfig(), vocab_size=128, hidden_size=64,
+            intermediate_size=128, num_hidden_layers=2, num_attention_heads=4,
+            num_key_value_heads=2, linear_num_key_heads=2,
+            linear_num_value_heads=4, linear_key_head_dim=8,
+            linear_value_head_dim=8, layer_types=["linear_attention", "full_attention"],
+        )
+        config.head_dim = 16
+        config.mrope_section = [2, 1, 1]
+        with using_forge_operations(device=torch.device("cpu"), dtype=torch.float32):
+            core = Qwen35Transformer(config)
+        for parameter in core.parameters():
+            torch.nn.init.normal_(parameter, std=0.02)
+        for prefix_length in (3, 65):
+            with self.subTest(prefix_length=prefix_length):
+                ids = torch.arange(prefix_length + 2).remainder(128).unsqueeze(0)
+                embeddings = core.embed_tokens(ids)
+                expected = core(None, embeds=embeddings)[0]
+                prefix, states = mistral_qwen35.forward_cached(core, embeddings[:, :prefix_length], 0)
+                first, states = mistral_qwen35.forward_cached(
+                    core, embeddings[:, prefix_length:prefix_length + 1], prefix_length, states
+                )
+                second, _ = mistral_qwen35.forward_cached(
+                    core, embeddings[:, prefix_length + 1:], prefix_length + 1, states
+                )
+                torch.testing.assert_close(prefix, expected[:, :prefix_length], rtol=1e-4, atol=1e-4)
+                torch.testing.assert_close(first, expected[:, prefix_length:prefix_length + 1], rtol=1e-4, atol=1e-4)
+                torch.testing.assert_close(second, expected[:, prefix_length + 1:], rtol=1e-4, atol=1e-4)
+
+    def test_qwen35_rejects_image_input_before_loading_weights(self):
+        import mistral_qwen35
+
+        with self.assertRaisesRegex(ValueError, "text input only"):
+            mistral_qwen35.generate("describe", [object()], 0.7, 10, 1, None, None, None)
 
 
 if __name__ == "__main__":

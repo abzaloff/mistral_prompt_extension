@@ -16,6 +16,7 @@ import gradio as gr
 from modules import scripts, shared, processing, sd_models, timer
 from modules.ui_components import ToolButton
 from mistral_current_encoder import generate_current_prompt
+from mistral_stitch import stitch_images
 
 MAX_IMAGES = 30
 API_URL = "https://api.mistral.ai/v1/chat/completions"
@@ -1482,6 +1483,12 @@ class Script(scripts.Script):
                     elem_classes=["mp-custom-gallery"],
                 )
 
+            stitch_mode = gr.Checkbox(
+                label="Stitch mode",
+                value=False,
+                elem_id=self.elem_id("mp_stitch_mode"),
+            )
+
             # Hidden textbox for receiving delete index from JS
             delete_index_pipe = gr.Textbox(
                 visible=True,
@@ -1653,11 +1660,12 @@ class Script(scripts.Script):
                 elem_id=self.elem_id("mp_quick_mode"),
             )
 
-            def fetch_prompt(model_name, auto_unload, images, init_prompt, source_prompt, append, temp, max_toks, t_p):
+            def fetch_prompt(model_name, auto_unload, images, stitch, init_prompt, source_prompt, append, temp, max_toks, t_p):
                 try:
                     provider, normalized_model = normalize_model_choice(model_name)
                     request_prompt = build_prompt_for_request(init_prompt, source_prompt)
-                    text = send_to_selected_model(model_name, request_prompt, images, temp, max_toks, t_p)
+                    request_images = stitch_images(images) if stitch else images
+                    text = send_to_selected_model(model_name, request_prompt, request_images, temp, max_toks, t_p)
                     if (append or "").strip():
                         text = f"{text}, {append.strip()}"
                     if auto_unload and provider == "lmstudio":
@@ -1675,7 +1683,7 @@ class Script(scripts.Script):
             tab = "img2img" if is_img2img else "txt2img"
             get_prompt_btn.click(
                 fn=fetch_prompt,
-                inputs=[model_choice, auto_unload_lmstudio, images_state, prompt_text, source_prompt_text, append_text, temperature, max_tokens, top_p],
+                inputs=[model_choice, auto_unload_lmstudio, images_state, stitch_mode, prompt_text, source_prompt_text, append_text, temperature, max_tokens, top_p],
                 outputs=[mistral_output],
             ).then(
                 fn=None,

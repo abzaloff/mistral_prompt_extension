@@ -1,4 +1,4 @@
-"""Generate text with Forge's selected Qwen 3VL 4B or 8B text encoder.
+"""Generate text with Forge's selected Qwen 3VL or Qwen3.5 text encoder.
 
 This module reads Forge model objects but does not modify them or Forge files.
 """
@@ -39,7 +39,7 @@ def get_qwen3vl(sd_model):
         None,
     )
     if model_type is None or not hasattr(encoder, "process_tokens"):
-        raise ValueError("Current model text encoder supports Qwen 3VL 4B and 8B only.")
+        raise ValueError("Current model text encoder supports Qwen 3VL 4B/8B and Qwen3.5 9B only.")
     tokenizer = getattr(tokenizers, model_type)
     core = getattr(transformer, "model", None)
     if core is None or not hasattr(core, "layers") or not hasattr(core, "embed_tokens"):
@@ -152,12 +152,20 @@ def generate_current_prompt(prompt, images, temperature, maximum_tokens, top_p):
     from modules import sd_models
 
     sd_model = get_selected_sd_model(sd_models.model_data, sd_models.forge_model_reload)
-    clip, encoder, tokenizer, transformer, core = get_qwen3vl(sd_model)
     if not prompt or not prompt.strip():
         raise ValueError("Prompt is empty.")
     if not 0 < int(maximum_tokens) <= 32768:
         raise ValueError("Max tokens must be between 1 and 32768.")
     maximum_tokens = int(maximum_tokens)
+
+    clip_model = getattr(getattr(getattr(sd_model, "forge_objects", None), "clip", None), "cond_stage_model", None)
+    if getattr(clip_model, "qwen35_9b", None) is not None:
+        from mistral_qwen35 import generate
+
+        return generate(prompt, images, temperature, maximum_tokens, top_p,
+                        sd_models.model_data, sd_model, sample_token)
+
+    clip, encoder, tokenizer, transformer, core = get_qwen3vl(sd_model)
 
     memory_management.load_model_gpu(clip.patcher)
     device = clip.patcher.load_device
